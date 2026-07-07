@@ -1,30 +1,37 @@
-const CLIENT_ID = '764929266866-62ua4ratuu6jimphrullociovmcdmkq9.apps.googleusercontent.com';
-// CẢNH BÁO: Hãy thay giá trị dưới đây bằng API KEY thật (bắt đầu bằng AIzaSy...) lấy từ Google Cloud
-const API_KEY = 'AIzaSyAsSD-DmNUjATuf8gjWlvq7LbUWaF6IHL4'; 
+/**
+ * googleSync.js - Google OAuth & API Initialization
+ * Quản lý: OAuth initialization, API discovery, Token callback
+ */
 
-const FOLDER_IDS = { 
-    settings: '1j5-DPSFeUSmeDYxbR7fW0zJdlf-P2efp', 
-    staffs: '1eNvquq7MhTfTDn1vwm7D7mEpORkTe5kQ', 
-    productivity: '19BLiBpgwKnDlbqgHtRPJFXs_jz3EMOXn', 
-    shifts: '1I28OyoCO6jmPyS_50EnwHvyS8opFbkl2', 
+const CLIENT_ID = '764929266866-62ua4ratuu6jimphrullociovmcdmkq9.apps.googleusercontent.com';
+const API_KEY = 'AIzaSyAsSD-DmNUjATuf8gjWlvq7LbUWaF6IHL4'; // API_KEY hợp lệ lấy từ code gốc của bạn
+
+const FOLDER_IDS = {
+    settings: '1j5-DPSFeUSmeDYxbR7fW0zJdlf-P2efp',
+    staffs: '1eNvquq7MhTfTDn1vwm7D7mEpORkTe5kQ',
+    productivity: '19BLiBpgwKnDlbqgHtRPJFXs_jz3EMOXn',
+    shifts: '1I28OyoCO6jmPyS_50EnwHvyS8opFbkl2',
     tasks: '1xOntuC0tf4F5kn8-QmzFRpTYR4Y4ebzO'
-}; 
+};
+
 window.GPORTAL_FOLDERS = FOLDER_IDS;
 
 const DISCOVERY_DOCS = [
     'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest',
     'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest',
-    'https://tasks.googleapis.com/$discovery/rest/v1' 
-]; 
+    'https://tasks.googleapis.com/$discovery/rest/v1'
+];
 
 const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks';
 
-// FIX LỖI: Chuyển hẳn sang đối tượng window để các file JS khác dùng chung
-window.tokenClient = null; 
+// ----------------------------------------------------
+// KHỞI TẠO BIẾN TOÀN CỤC ĐỂ AUTH.JS CÓ THỂ GỌI ĐƯỢC
+// ----------------------------------------------------
+window.tokenClient = null;
 let gapiInited = false;
 let gsiInited = false;
 
-// Hàm tự kích hoạt khi script gsi tải xong
+// Hàm tự động kích hoạt khi script Google GSI (accounts.google.com/gsi/client) tải xong
 window.gsiInit = function() {
     try {
         window.tokenClient = google.accounts.oauth2.initTokenClient({
@@ -44,7 +51,7 @@ window.gsiInit = function() {
     }
 };
 
-// Hàm tự kích hoạt khi script api tải xong
+// Hàm tự động kích hoạt khi script Google API (apis.google.com/js/api.js) tải xong
 window.gapiInit = function() {
     try {
         gapi.load('client', async () => {
@@ -61,12 +68,154 @@ window.gapiInit = function() {
     }
 };
 
-// Kiểm tra khi cả 2 thư viện đã load thành công mới khôi phục phiên đăng nhập cũ
+// Hàm kiểm tra tổng: Khi cả 2 thư viện đã load thành công mới khôi phục phiên đăng nhập cũ
 function checkAuthReady() {
     if (gapiInited && gsiInited) {
         console.log('✓ [G-Portal] Toàn bộ hệ thống API Google đã kết nối thành công!');
-        if (typeof checkExistingToken === 'function') {
-            checkExistingToken();
+        if (typeof window.checkExistingToken === 'function') {
+            window.checkExistingToken();
         }
     }
 }
+
+// ----------------------------------------------------
+// CÁC HÀM ĐỒNG BỘ GOOGLE CALENDAR VÀ GOOGLE TASKS
+// ----------------------------------------------------
+
+window.syncCalendarEvent = async function(dateStr, shiftCode, shiftTime, description) {
+    try {
+        let startTimeStr = "08:00:00";
+        let endTimeStr = "17:00:00";
+        if (shiftTime && shiftTime.includes("-")) {
+            const parts = shiftTime.split("-");
+            startTimeStr = parts[0].trim() + ":00";
+            endTimeStr = parts[1].trim() + ":00";
+        }
+        
+        const startDateTime = `${dateStr}T${startTimeStr}+07:00`;
+        const endDateTime = `${dateStr}T${endTimeStr}+07:00`;
+        const event = {
+            'summary': `Ca: ${shiftCode} - Chính chủ`,
+            'description': description,
+            'start': { 'dateTime': startDateTime, 'timeZone': 'Asia/Ho_Chi_Minh' },
+            'end': { 'dateTime': endDateTime, 'timeZone': 'Asia/Ho_Chi_Minh' }
+        };
+
+        const minTime = `${dateStr}T00:00:00+07:00`;
+        const maxTime = `${dateStr}T23:59:59+07:00`;
+        
+        let response = await gapi.client.calendar.events.list({
+            'calendarId': 'primary',
+            'timeMin': minTime,
+            'timeMax': maxTime,
+            'q': 'Ca:',
+            'singleEvents': true
+        });
+
+        const events = response.result.items;
+        if (events && events.length > 0) {
+            let targetEvent = events.find(e => e.summary && e.summary.includes("Ca:"));
+            if (targetEvent) {
+                await gapi.client.calendar.events.update({
+                    'calendarId': 'primary',
+                    'eventId': targetEvent.id,
+                    'resource': event
+                });
+                console.log(`✓ Updated Google Calendar for ${dateStr}`);
+                return;
+            }
+        }
+
+        await gapi.client.calendar.events.insert({
+            'calendarId': 'primary',
+            'resource': event
+        });
+        console.log(`✓ Created Google Calendar event for ${dateStr}`);
+    } catch (err) {
+        console.error("Lỗi Calendar:", err);
+    }
+};
+
+window.deleteCalendarEvent = async function(dateStr) {
+    try {
+        const minTime = `${dateStr}T00:00:00+07:00`;
+        const maxTime = `${dateStr}T23:59:59+07:00`;
+        let response = await gapi.client.calendar.events.list({
+            'calendarId': 'primary',
+            'timeMin': minTime,
+            'timeMax': maxTime,
+            'q': 'Ca:',
+            'singleEvents': true
+        });
+        const events = response.result.items;
+        if (events && events.length > 0) {
+            for (let e of events) {
+                if (e.summary && e.summary.includes("Ca:")) {
+                    await gapi.client.calendar.events.delete({
+                        'calendarId': 'primary',
+                        'eventId': e.id
+                    });
+                    console.log(`✓ Deleted Google Calendar event for ${dateStr}`);
+                }
+            }
+        }
+    } catch (err) {
+        console.error("Lỗi xóa Calendar:", err);
+    }
+};
+
+window.syncGoogleTask = async function(dateStr, taskBody) {
+    try {
+        let response = await gapi.client.tasks.tasks.list({
+            'tasklist': '@default',
+            'dueMin': `${dateStr}T00:00:00.000Z`,
+            'dueMax': `${dateStr}T23:59:59.000Z`
+        });
+        const tasks = response.result.items || [];
+        if (tasks.length > 0) {
+            let targetTask = tasks.find(t => t.title && (t.title.includes('PCCV') || t.title === taskBody.title));
+            if (targetTask) {
+                targetTask.title = taskBody.title;
+                targetTask.notes = taskBody.notes;
+                await gapi.client.tasks.tasks.update({
+                    'tasklist': '@default',
+                    'task': targetTask.id,
+                    'resource': targetTask
+                });
+                console.log(`✓ Updated Google Task for ${dateStr}`);
+                return;
+            }
+        }
+        
+        await gapi.client.tasks.tasks.insert({
+            'tasklist': '@default',
+            'resource': taskBody
+        });
+        console.log(`✓ Created Google Task for ${dateStr}`);
+    } catch (err) {
+        console.error("Lỗi Tasks:", err);
+    }
+};
+
+window.deleteGoogleTask = async function(dateStr, taskTitle) {
+    try {
+        let response = await gapi.client.tasks.tasks.list({
+            'tasklist': '@default',
+            'dueMin': `${dateStr}T00:00:00.000Z`,
+            'dueMax': `${dateStr}T23:59:59.000Z`
+        });
+        const tasks = response.result.items || [];
+        if (tasks.length > 0) {
+            let targetTask = tasks.find(t => t.title && t.title.includes(taskTitle));
+            if (targetTask) {
+                await gapi.client.tasks.tasks.delete({
+                    'tasklist': '@default',
+                    'task': targetTask.id
+                });
+                console.log(`✓ Deleted Google Task for ${dateStr}`);
+            }
+        }
+    } catch (err) {
+        console.error("Lỗi xóa Tasks:", err);
+    }
+};
