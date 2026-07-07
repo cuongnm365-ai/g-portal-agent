@@ -18,7 +18,7 @@
  */
 
 const CLIENT_ID = '764929266866-62ua4ratuu6jimphrullociovmcdmkq9.apps.googleusercontent.com';
-const API_KEY = 'AIzaSyAsSD-DmNUjATuf8gjWlvq7LbUWaF6IHL4'; // API_KEY hợp lệ lấy từ code gốc của bạn
+const API_KEY = 'AIzaSyChHKJeaAnGQ5cVoSeqQQ8R-BgPK2DLv2Y'; // API_KEY hợp lệ lấy từ code gốc của bạn
 
 const FOLDER_IDS = {
     settings: '1j5-DPSFeUSmeDYxbR7fW0zJdlf-P2efp',
@@ -36,7 +36,7 @@ const DISCOVERY_DOCS = [
     'https://tasks.googleapis.com/$discovery/rest/v1'
 ];
 
-const SCOPES = 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks';
+const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks';
 
 // ----------------------------------------------------
 // KHỞI TẠO BIẾN TOÀN CỤC ĐỂ AUTH.JS CÓ THỂ GỌI ĐƯỢC
