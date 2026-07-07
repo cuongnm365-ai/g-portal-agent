@@ -22,51 +22,108 @@ const DISCOVERY_DOCS = [
     'https://tasks.googleapis.com/$discovery/rest/v1'
 ];
 
-const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/userinfo.profile';
+const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks';
 
 let tokenClient;
 let gapiInited = false;
 
-document.addEventListener('DOMContentLoaded', () => {
-    const checkGoogleLoaded = setInterval(() => {
+/**
+ * Đợi cho đến khi Google APIs sẵn sàng
+ */
+function waitForGoogleAPIs() {
+    return new Promise((resolve) => {
         if (window.gapi && window.google) {
-            clearInterval(checkGoogleLoaded);
-            initializeGoogleSync();
+            resolve();
+            return;
         }
-    }, 100);
-});
+        
+        const checkInterval = setInterval(() => {
+            console.log('⏳ Chờ Google APIs tải...');
+            if (window.gapi && window.google) {
+                clearInterval(checkInterval);
+                console.log('✓ Google APIs đã tải');
+                resolve();
+            }
+        }, 200);
+        
+        // Timeout sau 10 giây
+        setTimeout(() => {
+            clearInterval(checkInterval);
+            console.error('❌ Google APIs tải timeout');
+            resolve();
+        }, 10000);
+    });
+}
 
 /**
  * Khởi tạo Google Sync - Load client library và OAuth2
  */
-function initializeGoogleSync() {
-    console.log('Initializing Google Sync...');
+async function initializeGoogleSync() {
+    console.log('🔄 Initializing Google Sync...');
     
-    gapi.load('client', intializeGapiClient);
-    
-    tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: CLIENT_ID,
-        scope: SCOPES,
-        callback: handleTokenResponse, // Gọi hàm trong auth.js
-    });
-    
-    console.log('✓ Google Sync initialized');
+    try {
+        // Bước 1: Khởi tạo GAPI
+        await new Promise((resolve) => {
+            gapi.load('client', async () => {
+                try {
+                    await gapi.client.init({ 
+                        apiKey: API_KEY, 
+                        discoveryDocs: DISCOVERY_DOCS 
+                    });
+                    gapiInited = true;
+                    console.log('✓ GAPI Client initialized');
+                    resolve();
+                } catch (error) {
+                    console.error('❌ Error initializing GAPI:', error);
+                    resolve();
+                }
+            });
+        });
+
+        // Bước 2: Khởi tạo OAuth2 Token Client
+        if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: SCOPES,
+                callback: handleTokenResponse, // Gọi hàm trong auth.js
+            });
+            console.log('✓ OAuth2 Token Client initialized');
+        } else {
+            console.error('❌ google.accounts.oauth2 not available');
+        }
+
+        console.log('✓ Google Sync fully initialized');
+        
+        // Log cho debugging
+        window.debugGoogleSync = {
+            tokenClient: tokenClient,
+            gapi: window.gapi,
+            google: window.google
+        };
+        
+    } catch (error) {
+        console.error('❌ Error in initializeGoogleSync:', error);
+    }
 }
 
 /**
- * Khởi tạo GAPI client
+ * Bắt đầu initialization khi DOM sẵn sàng
  */
-async function intializeGapiClient() {
-    try {
-        await gapi.client.init({ 
-            apiKey: API_KEY, 
-            discoveryDocs: DISCOVERY_DOCS 
-        });
-        gapiInited = true;
-        console.log('✓ GAPI Client initialized');
-    } catch (error) {
-        console.error('Error initializing GAPI:', error);
-    }
+document.addEventListener('DOMContentLoaded', async () => {
+    console.log('DOM loaded, waiting for Google APIs...');
+    await waitForGoogleAPIs();
+    await initializeGoogleSync();
+});
+
+// Backup: Cũng chạy nếu document đã load trước khi script chạy
+if (document.readyState === 'loading') {
+    console.log('Document still loading...');
+} else {
+    console.log('Document already loaded, initializing...');
+    (async () => {
+        await waitForGoogleAPIs();
+        await initializeGoogleSync();
+    })();
 }
 
 /**
