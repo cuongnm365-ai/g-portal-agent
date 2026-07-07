@@ -4,7 +4,28 @@
  * Tương tác: Google Drive qua drive.js
  */
 
+// ==================== CƠ CHẾ LOAD DATA & RENDER ĐẦU TIÊN ====================
+
+function loadLocalSettings() {
+    // Tải dữ liệu lưu tạm ở máy lên ngay lập tức để giao diện không bị trống
+    const saved = localStorage.getItem('gportal_settings');
+    if (saved) {
+        try {
+            window.portalSettings = { ...getDefaultSettings(), ...JSON.parse(saved) };
+        } catch (e) {
+            window.portalSettings = getDefaultSettings();
+        }
+    } else {
+        window.portalSettings = getDefaultSettings();
+    }
+    
+    // Ép render ra giao diện (dùng 1 trong 2 tên hàm để chống lỗi)
+    if (typeof renderSettingsUI === 'function') renderSettingsUI();
+    else if (typeof renderSettings === 'function') renderSettings();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+    loadLocalSettings(); // Gọi ngay khi tải trang
     try { 
         initSettingsEvents(); 
     } catch (e) { 
@@ -39,19 +60,12 @@ function initSettingsEvents() {
     // === THAM SỐ KPI ===
     document.getElementById('btn-save-coeff')?.addEventListener('click', saveCoefficients);
 
-    // Load settings từ Drive khi trang tải
-    if (typeof AppState !== 'undefined' && AppState.isLoggedIn) {
-        if (typeof loadSettingsFromDrive === 'function') {
-            loadSettingsFromDrive();
-        }
-    }
+    // Lưu ý: Tự động tải từ Drive đã được xử lý bên auth.js / googleSync.js 
+    // khi đăng nhập thành công, nên không gọi lại ở đây để tránh đụng độ.
 }
 
 // ==================== CA LÀM VIỆC ====================
 
-/**
- * Thêm ca làm việc mới
- */
 function addShift() {
     const code = document.getElementById('shift-code')?.value.trim();
     const name = document.getElementById('shift-name')?.value.trim() || '';
@@ -84,9 +98,6 @@ function addShift() {
     document.getElementById('shift-time').value = '';
 }
 
-/**
- * Tải file mẫu Ca làm việc
- */
 function downloadShiftTemplate() {
     const ws_data = [
         ["Mã Ca", "Tên Ca", "Thời gian", "Ghi chú"],
@@ -101,9 +112,6 @@ function downloadShiftTemplate() {
     XLSX.writeFile(wb, "Mau_CaLamViec.xlsx");
 }
 
-/**
- * Import ca làm việc từ Excel
- */
 function importShiftFromExcel(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -118,6 +126,7 @@ function importShiftFromExcel(event) {
             if (!window.portalSettings) window.portalSettings = getDefaultSettings();
             if (!window.portalSettings.shifts) window.portalSettings.shifts = [];
 
+            let addedCount = 0;
             rawJson.forEach(row => {
                 const code = row['Mã Ca'] || row['Code'];
                 const name = row['Tên Ca'] || row['Name'] || '';
@@ -128,12 +137,13 @@ function importShiftFromExcel(event) {
                         const colors = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981'];
                         const color = colors[Math.floor(Math.random() * colors.length)];
                         window.portalSettings.shifts.push({ code, name, time, color });
+                        addedCount++;
                     }
                 }
             });
 
             saveSettingsToDriveAndRefresh();
-            alert('✓ Import Ca làm việc thành công!');
+            alert(`✓ Đã Import thành công ${addedCount} ca làm việc mới!`);
         } catch (err) {
             console.error('Lỗi import:', err);
             alert('Lỗi đọc file Excel!');
@@ -146,9 +156,6 @@ function importShiftFromExcel(event) {
 
 // ==================== CA TĂNG CƯỜNG (OT) ====================
 
-/**
- * Thêm ca tăng cường mới
- */
 function addOTShift() {
     const code = document.getElementById('otshift-code')?.value.trim();
     const name = document.getElementById('otshift-name')?.value.trim() || '';
@@ -176,9 +183,6 @@ function addOTShift() {
     document.getElementById('otshift-time').value = '';
 }
 
-/**
- * Tải file mẫu Ca tăng cường
- */
 function downloadOTShiftTemplate() {
     const ws_data = [
         ["Mã Ca", "Tên Ca", "Thời gian", "Ghi chú"],
@@ -191,9 +195,6 @@ function downloadOTShiftTemplate() {
     XLSX.writeFile(wb, "Mau_CaTangCuong.xlsx");
 }
 
-/**
- * Import ca tăng cường từ Excel
- */
 function importOTShiftFromExcel(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -208,6 +209,7 @@ function importOTShiftFromExcel(event) {
             if (!window.portalSettings) window.portalSettings = getDefaultSettings();
             if (!window.portalSettings.otShifts) window.portalSettings.otShifts = [];
 
+            let addedCount = 0;
             rawJson.forEach(row => {
                 const code = row['Mã Ca'] || row['Code'];
                 const name = row['Tên Ca'] || row['Name'] || '';
@@ -216,12 +218,13 @@ function importOTShiftFromExcel(event) {
                 if (code && time) {
                     if (!window.portalSettings.otShifts.find(s => s.code === code)) {
                         window.portalSettings.otShifts.push({ code, name, time, color: '#ea4335' });
+                        addedCount++;
                     }
                 }
             });
 
             saveSettingsToDriveAndRefresh();
-            alert('✓ Import Ca tăng cường thành công!');
+            alert(`✓ Đã Import thành công ${addedCount} ca tăng cường mới!`);
         } catch (err) {
             console.error('Lỗi import:', err);
             alert('Lỗi đọc file Excel!');
@@ -234,9 +237,6 @@ function importOTShiftFromExcel(event) {
 
 // ==================== PHÂN CÔNG CÔNG VIỆC (PCCV) ====================
 
-/**
- * Thêm phân công công việc mới
- */
 function addTask() {
     const code = document.getElementById('task-code')?.value.trim();
     const name = document.getElementById('task-name')?.value.trim();
@@ -261,9 +261,6 @@ function addTask() {
     document.getElementById('task-name').value = '';
 }
 
-/**
- * Tải file mẫu PCCV
- */
 function downloadTaskTemplate() {
     const ws_data = [
         ["Mã", "Tên PCCV", "Ghi chú"],
@@ -278,9 +275,6 @@ function downloadTaskTemplate() {
     XLSX.writeFile(wb, "Mau_PCCV.xlsx");
 }
 
-/**
- * Import PCCV từ Excel
- */
 function importTaskFromExcel(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -295,6 +289,7 @@ function importTaskFromExcel(event) {
             if (!window.portalSettings) window.portalSettings = getDefaultSettings();
             if (!window.portalSettings.tasks) window.portalSettings.tasks = [];
 
+            let addedCount = 0;
             rawJson.forEach(row => {
                 const code = row['Mã'] || row['Code'];
                 const name = row['Tên PCCV'] || row['Name'];
@@ -302,12 +297,13 @@ function importTaskFromExcel(event) {
                 if (code && name) {
                     if (!window.portalSettings.tasks.find(t => t.code === code)) {
                         window.portalSettings.tasks.push({ code, name });
+                        addedCount++;
                     }
                 }
             });
 
             saveSettingsToDriveAndRefresh();
-            alert('✓ Import PCCV thành công!');
+            alert(`✓ Đã Import thành công ${addedCount} PCCV mới!`);
         } catch (err) {
             console.error('Lỗi import:', err);
             alert('Lỗi đọc file Excel!');
@@ -320,9 +316,6 @@ function importTaskFromExcel(event) {
 
 // ==================== NHÂN SỰ ====================
 
-/**
- * Thêm nhân sự mới
- */
 function addStaff() {
     const id = document.getElementById('staff-id')?.value.trim();
     const name = document.getElementById('staff-name')?.value.trim();
@@ -347,9 +340,6 @@ function addStaff() {
     document.getElementById('staff-name').value = '';
 }
 
-/**
- * Tải file mẫu Nhân sự
- */
 function downloadStaffTemplate() {
     const ws_data = [
         ["Mã NV", "Họ và Tên"],
@@ -363,9 +353,6 @@ function downloadStaffTemplate() {
     XLSX.writeFile(wb, "Mau_NhanSu.xlsx");
 }
 
-/**
- * Import nhân sự từ Excel
- */
 function importStaffFromExcel(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -380,6 +367,7 @@ function importStaffFromExcel(event) {
             if (!window.portalSettings) window.portalSettings = getDefaultSettings();
             if (!window.portalSettings.staffs) window.portalSettings.staffs = [];
 
+            let addedCount = 0;
             rawJson.forEach(row => {
                 const id = row['Mã NV'] || row['ID'];
                 const name = row['Họ và Tên'] || row['Name'];
@@ -387,12 +375,13 @@ function importStaffFromExcel(event) {
                 if (id && name) {
                     if (!window.portalSettings.staffs.find(s => s.id === id)) {
                         window.portalSettings.staffs.push({ id, name });
+                        addedCount++;
                     }
                 }
             });
 
             saveSettingsToDriveAndRefresh();
-            alert('✓ Import Nhân sự thành công!');
+            alert(`✓ Đã Import thành công ${addedCount} Nhân sự mới!`);
         } catch (err) {
             console.error('Lỗi import:', err);
             alert('Lỗi đọc file Excel!');
@@ -405,9 +394,6 @@ function importStaffFromExcel(event) {
 
 // ==================== THAM SỐ KPI ====================
 
-/**
- * Lưu các tham số KPI và công thức
- */
 async function saveCoefficients() {
     if (!window.portalSettings) window.portalSettings = getDefaultSettings();
     if (!window.portalSettings.coefficients) window.portalSettings.coefficients = {};
@@ -422,15 +408,12 @@ async function saveCoefficients() {
         coeffOtCong
     };
 
-    await saveSettingsToDrive(window.portalSettings);
+    saveSettingsToDriveAndRefresh();
     alert('✓ Đã lưu Tham số thành công!');
 }
 
-// ==================== HELPERS ====================
+// ==================== HELPERS TRUNG TÂM ====================
 
-/**
- * Lấy cấu hình mặc định
- */
 function getDefaultSettings() {
     return {
         shifts: [
@@ -456,14 +439,21 @@ function getDefaultSettings() {
 }
 
 /**
- * Lưu settings lên Drive và refresh UI
+ * 3 Nhiệm vụ chính: Lưu máy (chống mất dữ liệu), Render Giao diện ngay, Đẩy lên Drive ngầm
  */
 async function saveSettingsToDriveAndRefresh() {
-    if (typeof AppState !== 'undefined' && AppState.isLoggedIn) {
-        await saveSettingsToDrive(window.portalSettings);
-    }
+    // 1. Lưu ngay vào máy ảo trình duyệt để F5 không bao giờ bị mất
+    localStorage.setItem('gportal_settings', JSON.stringify(window.portalSettings));
     
+    // 2. Kích hoạt vẽ lại giao diện Settings lập tức
     if (typeof renderSettingsUI === 'function') {
         renderSettingsUI();
+    } else if (typeof renderSettings === 'function') {
+        renderSettings();
+    }
+
+    // 3. Đẩy lên Drive ở chế độ ngầm (nếu đang online)
+    if (typeof AppState !== 'undefined' && AppState.isLoggedIn && typeof window.saveSettingsToDrive === 'function') {
+        await window.saveSettingsToDrive(window.portalSettings);
     }
 }
