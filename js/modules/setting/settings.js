@@ -1,175 +1,469 @@
-window.portalSettings = { shifts: [], staffs: [], tasks: [], coefficients: { saModifier: 3, kpiTarget: 2000 } };
+/**
+ * settings.js - Settings Module
+ * Quản lý: Shifts, OT Shifts, Tasks, Staffs, Coefficients
+ * Tương tác: Google Drive qua drive.js
+ */
 
 document.addEventListener('DOMContentLoaded', () => {
-    loadLocalSettings();
-    initSettingsEvents();
-    initExcelFeatures();
+    try { 
+        initSettingsEvents(); 
+    } catch (e) { 
+        console.error('initSettingsEvents error:', e); 
+    }
 });
 
+/**
+ * Khởi tạo tất cả event listeners cho Settings
+ */
 function initSettingsEvents() {
-    document.getElementById('btn-add-shift').addEventListener('click', () => {
-        const code = document.getElementById('shift-code').value.trim();
-        const time = document.getElementById('shift-time').value.trim();
-        if (!code || !time) return alert("Vui lòng nhập đủ Mã Ca và Thời gian!");
-        window.portalSettings.shifts.push({ id: Date.now().toString(), code: code, time: time, color: generateRandomColor() });
-        triggerSaveAndRender();
-        document.getElementById('shift-code').value = ''; document.getElementById('shift-time').value = '';
-    });
+    // === CA LÀM VIỆC ===
+    document.getElementById('btn-add-shift')?.addEventListener('click', addShift);
+    document.getElementById('btn-tpl-shift')?.addEventListener('click', downloadShiftTemplate);
+    document.getElementById('import-shift')?.addEventListener('change', importShiftFromExcel);
 
-    document.getElementById('btn-add-staff').addEventListener('click', () => {
-        const id = document.getElementById('staff-id').value.trim();
-        const name = document.getElementById('staff-name').value.trim();
-        if (!id || !name) return alert("Vui lòng nhập đủ Mã NV và Họ Tên!");
-        window.portalSettings.staffs.push({ id: id, name: name });
-        triggerSaveAndRender();
-        document.getElementById('staff-id').value = ''; document.getElementById('staff-name').value = '';
-    });
+    // === CA TĂNG CƯỜNG (OT) ===
+    document.getElementById('btn-add-otshift')?.addEventListener('click', addOTShift);
+    document.getElementById('btn-tpl-otshift')?.addEventListener('click', downloadOTShiftTemplate);
+    document.getElementById('import-otshift')?.addEventListener('change', importOTShiftFromExcel);
 
-    document.getElementById('btn-add-task').addEventListener('click', () => {
-        const code = document.getElementById('task-code').value.trim();
-        const name = document.getElementById('task-name').value.trim();
-        if (!code || !name) return alert("Vui lòng nhập đủ Mã PCCV và Tên PCCV!");
-        window.portalSettings.tasks.push({ code: code, name: name });
-        triggerSaveAndRender();
-        document.getElementById('task-code').value = ''; document.getElementById('task-name').value = '';
-    });
+    // === PHÂN CÔNG CÔNG VIỆC (PCCV) ===
+    document.getElementById('btn-add-task')?.addEventListener('click', addTask);
+    document.getElementById('btn-tpl-task')?.addEventListener('click', downloadTaskTemplate);
+    document.getElementById('import-task')?.addEventListener('change', importTaskFromExcel);
 
-    document.getElementById('btn-save-coeff').addEventListener('click', () => {
-        window.portalSettings.coefficients.saModifier = parseFloat(document.getElementById('coeff-sa').value) || 3;
-        window.portalSettings.coefficients.kpiTarget = parseInt(document.getElementById('kpi-target').value) || 2000;
-        triggerSaveAndRender(); alert("Đã lưu tham số cấu hình!");
-        if(typeof window.updateDashboard === 'function') window.updateDashboard();
-    });
+    // === NHÂN SỰ ===
+    document.getElementById('btn-add-staff')?.addEventListener('click', addStaff);
+    document.getElementById('btn-tpl-staff')?.addEventListener('click', downloadStaffTemplate);
+    document.getElementById('import-staff')?.addEventListener('change', importStaffFromExcel);
+
+    // === THAM SỐ KPI ===
+    document.getElementById('btn-save-coeff')?.addEventListener('click', saveCoefficients);
+
+    // Load settings từ Drive khi trang tải
+    if (typeof AppState !== 'undefined' && AppState.isLoggedIn) {
+        if (typeof loadSettingsFromDrive === 'function') {
+            loadSettingsFromDrive();
+        }
+    }
 }
 
-// KHỐI XỬ LÝ IMPORT / EXPORT TỪ EXCEL
-function initExcelFeatures() {
-    // 1. CA LÀM VIỆC
-    document.getElementById('btn-tpl-shift').addEventListener('click', () => {
-        const ws = XLSX.utils.aoa_to_sheet([["Mã Ca", "Thời gian"], ["S1", "07:15 - 14:45"], ["S2", "14:45 - 22:15"]]);
-        const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "CaLamViec");
-        XLSX.writeFile(wb, "Mau_CaLamViec.xlsx");
-    });
-    document.getElementById('import-shift').addEventListener('change', function(e) {
-        processExcelImport(e, (row) => {
-            const code = row['Mã Ca']; const time = row['Thời gian'];
-            if(code && time) {
-                window.portalSettings.shifts = window.portalSettings.shifts.filter(s => s.code !== code); // Chống trùng lặp
-                window.portalSettings.shifts.push({id: Date.now().toString()+Math.random(), code, time, color: generateRandomColor()});
-            }
-        });
-        this.value = '';
-    });
+// ==================== CA LÀM VIỆC ====================
 
-    // 2. NHÂN SỰ
-    document.getElementById('btn-tpl-staff').addEventListener('click', () => {
-        const ws = XLSX.utils.aoa_to_sheet([["Mã NV", "Họ và tên"], ["NV01", "Nguyễn Văn A"]]);
-        const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "NhanSu");
-        XLSX.writeFile(wb, "Mau_NhanSu.xlsx");
-    });
-    document.getElementById('import-staff').addEventListener('change', function(e) {
-        processExcelImport(e, (row) => {
-            const id = row['Mã NV']; const name = row['Họ và tên'];
-            if(id && name) {
-                window.portalSettings.staffs = window.portalSettings.staffs.filter(s => s.id !== id);
-                window.portalSettings.staffs.push({id, name});
-            }
-        });
-        this.value = '';
-    });
+/**
+ * Thêm ca làm việc mới
+ */
+function addShift() {
+    const code = document.getElementById('shift-code')?.value.trim();
+    const name = document.getElementById('shift-name')?.value.trim() || '';
+    const time = document.getElementById('shift-time')?.value.trim();
 
-    // 3. PCCV
-    document.getElementById('btn-tpl-task').addEventListener('click', () => {
-        const ws = XLSX.utils.aoa_to_sheet([["Mã PCCV", "Tên PCCV"], ["CHAT", "HiFPT Chat"]]);
-        const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "PCCV");
-        XLSX.writeFile(wb, "Mau_PCCV.xlsx");
-    });
-    document.getElementById('import-task').addEventListener('change', function(e) {
-        processExcelImport(e, (row) => {
-            const code = row['Mã PCCV']; const name = row['Tên PCCV'];
-            if(code && name) {
-                window.portalSettings.tasks = window.portalSettings.tasks.filter(t => t.code !== code);
-                window.portalSettings.tasks.push({code, name});
-            }
-        });
-        this.value = '';
-    });
+    if (!code || !time) {
+        alert('Vui lòng nhập Mã Ca và Thời gian!');
+        return;
+    }
+
+    if (!window.portalSettings) window.portalSettings = getDefaultSettings();
+    if (!window.portalSettings.shifts) window.portalSettings.shifts = [];
+
+    // Check duplicate
+    if (window.portalSettings.shifts.find(s => s.code === code)) {
+        alert('Mã Ca đã tồn tại!');
+        return;
+    }
+
+    // Tạo màu random
+    const colors = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4'];
+    const color = colors[Math.floor(Math.random() * colors.length)];
+
+    window.portalSettings.shifts.push({ code, name, time, color });
+    saveSettingsToDriveAndRefresh();
+
+    // Clear inputs
+    document.getElementById('shift-code').value = '';
+    document.getElementById('shift-name').value = '';
+    document.getElementById('shift-time').value = '';
 }
 
-// Hàm dùng chung để đọc file Excel
-function processExcelImport(event, callback) {
-    const file = event.target.files[0]; if (!file) return;
+/**
+ * Tải file mẫu Ca làm việc
+ */
+function downloadShiftTemplate() {
+    const ws_data = [
+        ["Mã Ca", "Tên Ca", "Thời gian", "Ghi chú"],
+        ["S1", "Ca sáng", "07:15 - 14:45", ""],
+        ["S2", "Ca chiều", "14:45 - 22:15", ""],
+        ["S3", "Ca tối", "22:15 - 07:15", ""]
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(ws_data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "CaLamViec");
+    XLSX.writeFile(wb, "Mau_CaLamViec.xlsx");
+}
+
+/**
+ * Import ca làm việc từ Excel
+ */
+function importShiftFromExcel(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
     const reader = new FileReader();
-    reader.onload = function(e) {
-        const data = new Uint8Array(e.target.result);
-        const wb = XLSX.read(data, {type: 'array'});
-        const rawJson = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-        rawJson.forEach(row => callback(row));
-        triggerSaveAndRender();
-        alert("Import dữ liệu thành công!");
+    reader.onload = function (e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const wb = XLSX.read(data, { type: 'array' });
+            const rawJson = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+
+            if (!window.portalSettings) window.portalSettings = getDefaultSettings();
+            if (!window.portalSettings.shifts) window.portalSettings.shifts = [];
+
+            rawJson.forEach(row => {
+                const code = row['Mã Ca'] || row['Code'];
+                const name = row['Tên Ca'] || row['Name'] || '';
+                const time = row['Thời gian'] || row['Time'];
+
+                if (code && time) {
+                    if (!window.portalSettings.shifts.find(s => s.code === code)) {
+                        const colors = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981'];
+                        const color = colors[Math.floor(Math.random() * colors.length)];
+                        window.portalSettings.shifts.push({ code, name, time, color });
+                    }
+                }
+            });
+
+            saveSettingsToDriveAndRefresh();
+            alert('✓ Import Ca làm việc thành công!');
+        } catch (err) {
+            console.error('Lỗi import:', err);
+            alert('Lỗi đọc file Excel!');
+        } finally {
+            event.target.value = '';
+        }
     };
     reader.readAsArrayBuffer(file);
 }
 
-function renderSettings() {
-    document.getElementById('shift-list').innerHTML = window.portalSettings.shifts.map((shift, index) => `
-        <li class="data-item"><div><span class="shift-color-badge" style="background-color: ${shift.color}"></span><strong>${shift.code}</strong> (${shift.time})</div><button class="btn-delete" onclick="deleteSetting('shifts', ${index})"><i class='bx bx-trash'></i></button></li>`).join('');
+// ==================== CA TĂNG CƯỜNG (OT) ====================
 
-    document.getElementById('staff-list').innerHTML = window.portalSettings.staffs.map((staff, index) => `
-        <li class="data-item"><div><strong>${staff.id}</strong> - ${staff.name}</div><button class="btn-delete" onclick="deleteSetting('staffs', ${index})"><i class='bx bx-trash'></i></button></li>`).join('');
+/**
+ * Thêm ca tăng cường mới
+ */
+function addOTShift() {
+    const code = document.getElementById('otshift-code')?.value.trim();
+    const name = document.getElementById('otshift-name')?.value.trim() || '';
+    const time = document.getElementById('otshift-time')?.value.trim();
 
-    if (window.portalSettings.tasks) {
-        document.getElementById('task-list').innerHTML = window.portalSettings.tasks.map((task, index) => `
-            <li class="data-item"><div><strong>${task.code}</strong> - ${task.name}</div><button class="btn-delete" onclick="deleteSetting('tasks', ${index})"><i class='bx bx-trash'></i></button></li>`).join('');
+    if (!code || !time) {
+        alert('Vui lòng nhập Mã ca và Thời gian!');
+        return;
     }
 
-    if (window.portalSettings.coefficients) {
-        document.getElementById('coeff-sa').value = window.portalSettings.coefficients.saModifier || 3;
-        document.getElementById('kpi-target').value = window.portalSettings.coefficients.kpiTarget || 2000;
+    if (!window.portalSettings) window.portalSettings = getDefaultSettings();
+    if (!window.portalSettings.otShifts) window.portalSettings.otShifts = [];
+
+    if (window.portalSettings.otShifts.find(s => s.code === code)) {
+        alert('Mã ca tăng cường đã tồn tại!');
+        return;
     }
-    if (typeof renderCalendar === 'function') renderCalendar();
+
+    const color = '#ea4335'; // Red for OT
+    window.portalSettings.otShifts.push({ code, name, time, color });
+    saveSettingsToDriveAndRefresh();
+
+    document.getElementById('otshift-code').value = '';
+    document.getElementById('otshift-name').value = '';
+    document.getElementById('otshift-time').value = '';
 }
 
-window.deleteSetting = function(type, index) { window.portalSettings[type].splice(index, 1); triggerSaveAndRender(); }
-function generateRandomColor() { return `hsl(${Math.floor(Math.random() * 360)}, 70%, 60%)`; }
+/**
+ * Tải file mẫu Ca tăng cường
+ */
+function downloadOTShiftTemplate() {
+    const ws_data = [
+        ["Mã Ca", "Tên Ca", "Thời gian", "Ghi chú"],
+        ["S+", "Tăng cường ca", "14:45 - 18:00", ""]
+    ];
 
-function triggerSaveAndRender() {
-    localStorage.setItem('gportal_settings', JSON.stringify(window.portalSettings));
-    renderSettings();
-    if (typeof AppState !== 'undefined' && AppState.isLoggedIn && typeof saveJsonToDrive === 'function' && window.GPORTAL_FOLDERS) {
-        saveJsonToDrive('shifts.json', window.portalSettings.shifts, window.GPORTAL_FOLDERS.shifts);
-        saveJsonToDrive('staffs.json', window.portalSettings.staffs, window.GPORTAL_FOLDERS.staffs);
-        saveJsonToDrive('tasks.json', window.portalSettings.tasks, window.GPORTAL_FOLDERS.tasks);
-        saveJsonToDrive('coefficients.json', window.portalSettings.coefficients, window.GPORTAL_FOLDERS.settings);
-    }
+    const ws = XLSX.utils.aoa_to_sheet(ws_data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "CaTangCuong");
+    XLSX.writeFile(wb, "Mau_CaTangCuong.xlsx");
 }
 
-function loadLocalSettings() {
-    const saved = localStorage.getItem('gportal_settings');
-    if (saved) {
-        window.portalSettings = { ...window.portalSettings, ...JSON.parse(saved) };
-        if (!window.portalSettings.tasks) window.portalSettings.tasks = [];
-        if (!window.portalSettings.coefficients.kpiTarget) window.portalSettings.coefficients.kpiTarget = 2000;
-        renderSettings();
-    }
+/**
+ * Import ca tăng cường từ Excel
+ */
+function importOTShiftFromExcel(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const wb = XLSX.read(data, { type: 'array' });
+            const rawJson = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+
+            if (!window.portalSettings) window.portalSettings = getDefaultSettings();
+            if (!window.portalSettings.otShifts) window.portalSettings.otShifts = [];
+
+            rawJson.forEach(row => {
+                const code = row['Mã Ca'] || row['Code'];
+                const name = row['Tên Ca'] || row['Name'] || '';
+                const time = row['Thời gian'] || row['Time'];
+
+                if (code && time) {
+                    if (!window.portalSettings.otShifts.find(s => s.code === code)) {
+                        window.portalSettings.otShifts.push({ code, name, time, color: '#ea4335' });
+                    }
+                }
+            });
+
+            saveSettingsToDriveAndRefresh();
+            alert('✓ Import Ca tăng cường thành công!');
+        } catch (err) {
+            console.error('Lỗi import:', err);
+            alert('Lỗi đọc file Excel!');
+        } finally {
+            event.target.value = '';
+        }
+    };
+    reader.readAsArrayBuffer(file);
 }
 
-window.loadSettingsFromDrive = async function() {
-    if (!window.GPORTAL_FOLDERS) return;
-    const [shiftsData, staffsData, tasksData, coeffData] = await Promise.all([
-        getJsonFromDrive('shifts.json', window.GPORTAL_FOLDERS.shifts),
-        getJsonFromDrive('staffs.json', window.GPORTAL_FOLDERS.staffs),
-        getJsonFromDrive('tasks.json', window.GPORTAL_FOLDERS.tasks),
-        getJsonFromDrive('coefficients.json', window.GPORTAL_FOLDERS.settings)
-    ]);
+// ==================== PHÂN CÔNG CÔNG VIỆC (PCCV) ====================
 
-    if (shiftsData) window.portalSettings.shifts = shiftsData;
-    if (staffsData) window.portalSettings.staffs = staffsData;
-    if (tasksData) window.portalSettings.tasks = tasksData;
-    if (coeffData) window.portalSettings.coefficients = coeffData;
-    if (!window.portalSettings.coefficients.kpiTarget) window.portalSettings.coefficients.kpiTarget = 2000;
+/**
+ * Thêm phân công công việc mới
+ */
+function addTask() {
+    const code = document.getElementById('task-code')?.value.trim();
+    const name = document.getElementById('task-name')?.value.trim();
 
-    localStorage.setItem('gportal_settings', JSON.stringify(window.portalSettings));
-    renderSettings();
-    if(typeof window.updateDashboard === 'function') window.updateDashboard();
+    if (!code || !name) {
+        alert('Vui lòng nhập Mã và Tên PCCV!');
+        return;
+    }
+
+    if (!window.portalSettings) window.portalSettings = getDefaultSettings();
+    if (!window.portalSettings.tasks) window.portalSettings.tasks = [];
+
+    if (window.portalSettings.tasks.find(t => t.code === code)) {
+        alert('Mã PCCV đã tồn tại!');
+        return;
+    }
+
+    window.portalSettings.tasks.push({ code, name });
+    saveSettingsToDriveAndRefresh();
+
+    document.getElementById('task-code').value = '';
+    document.getElementById('task-name').value = '';
+}
+
+/**
+ * Tải file mẫu PCCV
+ */
+function downloadTaskTemplate() {
+    const ws_data = [
+        ["Mã", "Tên PCCV", "Ghi chú"],
+        ["CHAT", "Chat hỗ trợ", ""],
+        ["CALL", "Cuộc gọi ngoài", ""],
+        ["ADMIN", "Hành chính", ""]
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(ws_data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "PCCV");
+    XLSX.writeFile(wb, "Mau_PCCV.xlsx");
+}
+
+/**
+ * Import PCCV từ Excel
+ */
+function importTaskFromExcel(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const wb = XLSX.read(data, { type: 'array' });
+            const rawJson = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+
+            if (!window.portalSettings) window.portalSettings = getDefaultSettings();
+            if (!window.portalSettings.tasks) window.portalSettings.tasks = [];
+
+            rawJson.forEach(row => {
+                const code = row['Mã'] || row['Code'];
+                const name = row['Tên PCCV'] || row['Name'];
+
+                if (code && name) {
+                    if (!window.portalSettings.tasks.find(t => t.code === code)) {
+                        window.portalSettings.tasks.push({ code, name });
+                    }
+                }
+            });
+
+            saveSettingsToDriveAndRefresh();
+            alert('✓ Import PCCV thành công!');
+        } catch (err) {
+            console.error('Lỗi import:', err);
+            alert('Lỗi đọc file Excel!');
+        } finally {
+            event.target.value = '';
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+// ==================== NHÂN SỰ ====================
+
+/**
+ * Thêm nhân sự mới
+ */
+function addStaff() {
+    const id = document.getElementById('staff-id')?.value.trim();
+    const name = document.getElementById('staff-name')?.value.trim();
+
+    if (!id || !name) {
+        alert('Vui lòng nhập Mã NV và Họ tên!');
+        return;
+    }
+
+    if (!window.portalSettings) window.portalSettings = getDefaultSettings();
+    if (!window.portalSettings.staffs) window.portalSettings.staffs = [];
+
+    if (window.portalSettings.staffs.find(s => s.id === id)) {
+        alert('Mã NV đã tồn tại!');
+        return;
+    }
+
+    window.portalSettings.staffs.push({ id, name });
+    saveSettingsToDriveAndRefresh();
+
+    document.getElementById('staff-id').value = '';
+    document.getElementById('staff-name').value = '';
+}
+
+/**
+ * Tải file mẫu Nhân sự
+ */
+function downloadStaffTemplate() {
+    const ws_data = [
+        ["Mã NV", "Họ và Tên"],
+        ["NV01", "Nguyễn Văn A"],
+        ["NV02", "Trần Thị B"]
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(ws_data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "NhanSu");
+    XLSX.writeFile(wb, "Mau_NhanSu.xlsx");
+}
+
+/**
+ * Import nhân sự từ Excel
+ */
+function importStaffFromExcel(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const wb = XLSX.read(data, { type: 'array' });
+            const rawJson = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+
+            if (!window.portalSettings) window.portalSettings = getDefaultSettings();
+            if (!window.portalSettings.staffs) window.portalSettings.staffs = [];
+
+            rawJson.forEach(row => {
+                const id = row['Mã NV'] || row['ID'];
+                const name = row['Họ và Tên'] || row['Name'];
+
+                if (id && name) {
+                    if (!window.portalSettings.staffs.find(s => s.id === id)) {
+                        window.portalSettings.staffs.push({ id, name });
+                    }
+                }
+            });
+
+            saveSettingsToDriveAndRefresh();
+            alert('✓ Import Nhân sự thành công!');
+        } catch (err) {
+            console.error('Lỗi import:', err);
+            alert('Lỗi đọc file Excel!');
+        } finally {
+            event.target.value = '';
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+// ==================== THAM SỐ KPI ====================
+
+/**
+ * Lưu các tham số KPI và công thức
+ */
+async function saveCoefficients() {
+    if (!window.portalSettings) window.portalSettings = getDefaultSettings();
+    if (!window.portalSettings.coefficients) window.portalSettings.coefficients = {};
+
+    const saModifier = parseFloat(document.getElementById('sa-modifier')?.value) || 3;
+    const kpiTarget = parseInt(document.getElementById('kpi-target')?.value) || 2000;
+    const coeffOtCong = parseFloat(document.getElementById('coeff-ot-cong')?.value) || 0.5;
+
+    window.portalSettings.coefficients = {
+        saModifier,
+        kpiTarget,
+        coeffOtCong
+    };
+
+    await saveSettingsToDrive(window.portalSettings);
+    alert('✓ Đã lưu Tham số thành công!');
+}
+
+// ==================== HELPERS ====================
+
+/**
+ * Lấy cấu hình mặc định
+ */
+function getDefaultSettings() {
+    return {
+        shifts: [
+            { code: 'S1', name: 'Ca sáng', time: '07:15 - 14:45', color: '#3b82f6' },
+            { code: 'S2', name: 'Ca chiều', time: '14:45 - 22:15', color: '#8b5cf6' },
+            { code: 'S3', name: 'Ca tối', time: '22:15 - 07:15', color: '#ec4899' }
+        ],
+        otShifts: [
+            { code: 'S+', name: 'Tăng cường ca', time: '14:45 - 18:00', color: '#ea4335' }
+        ],
+        tasks: [
+            { code: 'CHAT', name: 'Chat hỗ trợ' },
+            { code: 'CALL', name: 'Cuộc gọi ngoài' },
+            { code: 'ADMIN', name: 'Hành chính' }
+        ],
+        staffs: [],
+        coefficients: {
+            saModifier: 3,
+            kpiTarget: 2000,
+            coeffOtCong: 0.5
+        }
+    };
+}
+
+/**
+ * Lưu settings lên Drive và refresh UI
+ */
+async function saveSettingsToDriveAndRefresh() {
+    if (typeof AppState !== 'undefined' && AppState.isLoggedIn) {
+        await saveSettingsToDrive(window.portalSettings);
+    }
+    
+    if (typeof renderSettingsUI === 'function') {
+        renderSettingsUI();
+    }
 }
