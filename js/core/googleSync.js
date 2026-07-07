@@ -31,9 +31,14 @@ window.tokenClient = null;
 let gapiInited = false;
 let gsiInited = false;
 
-// Hàm tự động kích hoạt khi script Google GSI (accounts.google.com/gsi/client) tải xong
-window.gsiInit = function() {
-    try {
+// CƠ CHẾ MỚI: Chủ động tải thư viện Google để chống lỗi khi F5
+document.addEventListener('DOMContentLoaded', () => {
+    // Tải Google Identity Services (GSI)
+    const gsiScript = document.createElement('script');
+    gsiScript.src = "https://accounts.google.com/gsi/client";
+    gsiScript.async = true;
+    gsiScript.defer = true;
+    gsiScript.onload = () => {
         window.tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: CLIENT_ID,
             scope: SCOPES,
@@ -44,31 +49,29 @@ window.gsiInit = function() {
             },
         });
         gsiInited = true;
-        console.log('✓ Google GSI Token Client đã sẵn sàng.');
         checkAuthReady();
-    } catch (err) {
-        console.error('Lỗi khởi tạo GSI:', err);
-    }
-};
+    };
+    document.body.appendChild(gsiScript);
 
-// Hàm tự động kích hoạt khi script Google API (apis.google.com/js/api.js) tải xong
-window.gapiInit = function() {
-    try {
+    // Tải Google API Client (GAPI)
+    const gapiScript = document.createElement('script');
+    gapiScript.src = "https://apis.google.com/js/api.js";
+    gapiScript.async = true;
+    gapiScript.defer = true;
+    gapiScript.onload = () => {
         gapi.load('client', async () => {
             await gapi.client.init({
                 apiKey: API_KEY,
                 discoveryDocs: DISCOVERY_DOCS,
             });
             gapiInited = true;
-            console.log('✓ Google GAPI Client đã sẵn sàng.');
             checkAuthReady();
         });
-    } catch (err) {
-        console.error('Lỗi khởi tạo GAPI:', err);
-    }
-};
+    };
+    document.body.appendChild(gapiScript);
+});
 
-// Hàm kiểm tra tổng: Khi cả 2 thư viện đã load thành công mới khôi phục phiên đăng nhập cũ
+// Kiểm tra khi cả 2 thư viện đã load thành công mới khôi phục phiên đăng nhập cũ
 function checkAuthReady() {
     if (gapiInited && gsiInited) {
         console.log('✓ [G-Portal] Toàn bộ hệ thống API Google đã kết nối thành công!');
