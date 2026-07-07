@@ -2,13 +2,27 @@
  * auth.js - Google OAuth Authentication Handler
  * Quản lý quy trình xác thực Google OAuth2
  * Xử lý: Login, Logout, Session restoration, Token management
+ *
+ * FIX QUAN TRỌNG (so với bản cũ):
+ * - Access token của Google (qua initTokenClient) chỉ sống ~1 giờ và KHÔNG có
+ *   refresh token (vì đây là web app tĩnh, không có server backend). Bản cũ
+ *   chỉ đọc token cũ trong localStorage: nếu hết hạn hoặc chưa từng có, ứng
+ *   dụng bó tay và luôn bắt người dùng bấm nút đăng nhập thủ công lại từ đầu.
+ * - Bản này bổ sung attemptSilentLogin(): khi không có token hợp lệ trong
+ *   localStorage, hệ thống sẽ ÂM THẦM xin cấp lại token (prompt: '') trước
+ *   khi hiển thị màn hình đăng nhập. Nếu trình duyệt/tài khoản đã từng cấp
+ *   quyền cho ứng dụng, Google sẽ cấp lại token mà KHÔNG hiện popup, giúp
+ *   người dùng không phải đăng nhập lại mỗi lần F5.
+ * - Nếu trình duyệt chặn cơ chế này (vd Safari chặn cookie bên thứ 3 nghiêm
+ *   ngặt), silent renew sẽ thất bại và người dùng vẫn cần đăng nhập thủ công
+ *   như bình thường - đây là giới hạn từ phía Google, không phải lỗi code.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-    try { 
-        initAuthFlow(); 
-    } catch (e) { 
-        console.error('initAuthFlow error:', e); 
+    try {
+        initAuthFlow();
+    } catch (e) {
+        console.error('initAuthFlow error:', e);
     }
 });
 
@@ -26,13 +40,13 @@ function initAuthFlow() {
     if (btnGoogleAuth) {
         btnGoogleAuth.addEventListener('click', handleAuthToggle);
     }
-    
+
     // Đã chuyển checkExistingToken() sang gọi từ checkAuthReady() bên googleSync.js
     // để đảm bảo Google API tải xong 100% trước khi check token.
 }
 
 /**
- * Xử lý click nút "Đăng nhập với Google"
+ * Xử lý click nút "Đăng nhập với Google" (yêu cầu tương tác người dùng -> luôn hiện popup)
  */
 function handleLoginClick() {
     if (!window.tokenClient) {
@@ -41,7 +55,7 @@ function handleLoginClick() {
         return;
     }
 
-    // Yêu cầu token với prompt='consent' để hiện popup
+    // Yêu cầu token với prompt='consent' để hiện popup (đăng nhập thủ công)
     window.tokenClient.requestAccessToken({ prompt: 'consent' });
 }
 
@@ -58,10 +72,10 @@ function handleAuthToggle() {
             });
             gapi.client.setToken('');
         }
-        
+
         localStorage.removeItem('gportal_access_token');
         AppState.isLoggedIn = false;
-        
+
         updateAuthUI();
         window.showLogin('Bạn đã đăng xuất khỏi G-Portal');
     } else {
@@ -89,28 +103,41 @@ function updateAuthUI() {
 
 /**
  * Callback được gọi từ googleSync.js khi Token Response được trả về
+ * (được dùng chung cho cả 3 trường hợp: bấm nút đăng nhập thủ công,
+ * khôi phục token cũ hợp lệ đã tự setToken thẳng không qua đây,
+ * và silent renew tự động khi F5)
  */
 window.handleTokenResponse = function(tokenResponse) {
     if (tokenResponse.error !== undefined) {
+        // Nếu đây là lần thử silent renew tự động (không phải người dùng bấm nút)
+        // thì không cần báo lỗi ồn ào, chỉ cần hiển thị màn hình đăng nhập bình thường.
+        if (tokenResponse.error === 'immediate_failed' || tokenResponse.error === 'access_denied' || window.__gportalSilentAttempted) {
+            console.log('Không thể tự động khôi phục phiên đăng nhập (silent renew thất bại), cần đăng nhập thủ công.');
+            if (typeof window.showLogin === 'function') window.showLogin('');
+            window.__gportalSilentAttempted = false;
+            return;
+        }
         console.error('Lỗi xác thực:', tokenResponse);
         window.showLogin('Lỗi xác thực: ' + (tokenResponse.error || 'Không xác định'));
         return;
     }
 
+    window.__gportalSilentAttempted = false;
+
     // Đăng nhập thành công, lưu lại token để dùng cho các phiên sau (F5)
     AppState.isLoggedIn = true;
     console.log('✓ Xác thực token Google thành công!');
-    
+
     localStorage.setItem('gportal_access_token', JSON.stringify({
         token: tokenResponse.access_token,
         expiry: new Date().getTime() + (tokenResponse.expires_in * 1000)
     }));
-    
+
     updateAuthUI();
-    
+
     // Mở khóa UI ẩn màn hình login, hiện portal
     if (typeof window.showApp === 'function') window.showApp();
-    
+
     // Tải dữ liệu từ Drive
     if (typeof window.loadSettingsFromDrive === 'function') window.loadSettingsFromDrive();
     if (typeof window.loadScheduleFromDrive === 'function') window.loadScheduleFromDrive();
@@ -118,34 +145,64 @@ window.handleTokenResponse = function(tokenResponse) {
 };
 
 /**
- * Kiểm tra xem phiên đăng nhập cũ còn hiệu lực không (được gọi từ googleSync.js)
+ * Kiểm tra xem phiên đăng nhập cũ còn hiệu lực không (được gọi từ googleSync.js
+ * ngay khi cả gapi và Google Identity Services đã tải xong, kể cả sau F5)
  */
 window.checkExistingToken = function() {
     const storedTokenStr = localStorage.getItem('gportal_access_token');
+
     if (storedTokenStr) {
         try {
             const storedToken = JSON.parse(storedTokenStr);
             if (new Date().getTime() < storedToken.expiry) {
-                // Token còn hiệu lực -> Set lại token cho GAPI Client
+                // Token còn hiệu lực -> Set lại token cho GAPI Client ngay, không cần gọi Google
                 gapi.client.setToken({ access_token: storedToken.token });
                 AppState.isLoggedIn = true;
-                
+
                 updateAuthUI();
                 if (typeof window.showApp === 'function') window.showApp();
-                
+
                 // Khôi phục dữ liệu
                 if (typeof window.loadSettingsFromDrive === 'function') window.loadSettingsFromDrive();
                 if (typeof window.loadScheduleFromDrive === 'function') window.loadScheduleFromDrive();
                 if (typeof window.loadProductivityFromDrive === 'function') window.loadProductivityFromDrive();
-                
-                console.log('✓ Đã khôi phục phiên đăng nhập cũ thành công.');
+
+                console.log('✓ Đã khôi phục phiên đăng nhập cũ thành công (token còn hạn).');
+                return;
             } else {
-                // Token hết hạn
+                // Token hết hạn trong localStorage -> xoá và thử âm thầm xin cấp lại
                 localStorage.removeItem('gportal_access_token');
-                if (typeof window.showLogin === 'function') window.showLogin('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.');
             }
         } catch (e) {
             localStorage.removeItem('gportal_access_token');
         }
+    }
+
+    // Không có token hợp lệ trong localStorage (hết hạn / chưa từng có / lỗi đọc)
+    // -> Thử âm thầm xin cấp lại token trước khi bắt đăng nhập thủ công.
+    attemptSilentLogin();
+};
+
+/**
+ * Âm thầm xin Google cấp lại access token mà KHÔNG hiện popup, dựa trên phiên
+ * đăng nhập Google hiện có của trình duyệt (nếu người dùng đã từng cấp quyền
+ * cho ứng dụng trước đó). Nếu thành công -> handleTokenResponse xử lý y hệt
+ * như đăng nhập thủ công. Nếu thất bại -> hiển thị màn hình đăng nhập bình thường.
+ */
+function attemptSilentLogin() {
+    if (!window.tokenClient) {
+        // Google Identity Services chưa sẵn sàng, hiển thị màn hình đăng nhập
+        if (typeof window.showLogin === 'function') window.showLogin('');
+        return;
+    }
+
+    try {
+        window.__gportalSilentAttempted = true;
+        // prompt: '' => không hiện bất kỳ UI nào; chỉ cấp token nếu đã có sẵn phiên/uỷ quyền
+        window.tokenClient.requestAccessToken({ prompt: '' });
+    } catch (e) {
+        console.log('Silent renew không khả dụng, cần đăng nhập thủ công.', e);
+        window.__gportalSilentAttempted = false;
+        if (typeof window.showLogin === 'function') window.showLogin('');
     }
 };
