@@ -14,8 +14,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 /**
  * Khởi tạo quy trình xác thực
- * - Kiểm tra token hiện có
- * - Gắn sự kiện cho nút Login/Logout
  */
 function initAuthFlow() {
     const btnLoginGoogle = document.getElementById('btn-login-google');
@@ -28,99 +26,51 @@ function initAuthFlow() {
     if (btnGoogleAuth) {
         btnGoogleAuth.addEventListener('click', handleAuthToggle);
     }
-
-    // Kiểm tra xem có token đã lưu từ lần đăng nhập trước không
-    checkExistingToken();
+    
+    // Đã chuyển checkExistingToken() sang gọi từ checkAuthReady() bên googleSync.js
+    // để đảm bảo Google API tải xong 100% trước khi check token.
 }
 
 /**
- * Xử lý click nút "Đăng nhập với Google" trên màn hình Login
+ * Xử lý click nút "Đăng nhập với Google"
  */
 function handleLoginClick() {
     if (!window.tokenClient) {
+        alert('Hệ thống Google đang được khởi tạo, vui lòng đợi thêm 1-2 giây rồi thử lại!');
         console.error('tokenClient chưa được khởi tạo. Vui lòng đợi Google API tải xong.');
         return;
     }
 
-    // Yêu cầu token với prompt='consent' để ép người dùng chọn tài khoản
+    // Yêu cầu token với prompt='consent' để hiện popup
     window.tokenClient.requestAccessToken({ prompt: 'consent' });
 }
 
 /**
- * Xử lý click nút "Đăng xuất" hoặc "Đã kết nối Google"
- * Nếu đã đăng nhập -> đăng xuất
- * Nếu chưa đăng nhập -> đăng nhập
+ * Xử lý click nút "Đăng xuất" hoặc "Đã kết nối" bên trong portal
  */
 function handleAuthToggle() {
-    if (!window.AppState.isLoggedIn) {
-        // Chưa đăng nhập -> Yêu cầu đăng nhập
-        if (window.tokenClient) {
-            window.tokenClient.requestAccessToken({ prompt: '' });
+    if (AppState.isLoggedIn) {
+        // Thu hồi token khỏi Google
+        const token = gapi.client.getToken();
+        if (token !== null) {
+            google.accounts.oauth2.revoke(token.access_token, () => {
+                console.log('Đã thu hồi token thành công.');
+            });
+            gapi.client.setToken('');
         }
-    } else {
-        // Đã đăng nhập -> Đăng xuất
-        revokeToken();
-    }
-}
-
-/**
- * Kiểm tra xem có token cũ được lưu không
- * Nếu có -> thử restore phiên trước
- * Nếu không -> hiển thị màn hình Login
- */
-async function checkExistingToken() {
-    // Đợi gapi và Google API tải xong
-    if (!window.gapi || !window.google) {
-        console.log('Đợi Google API tải...');
-        setTimeout(checkExistingToken, 100);
-        return;
-    }
-
-    const token = window.gapi.client.getToken();
-    if (token !== null) {
-        // Có token -> Khôi phục phiên
-        console.log('Token cũ được tìm thấy, đang khôi phục phiên...');
-        AppState.isLoggedIn = true;
-        updateAuthUI();
         
-        // Load dữ liệu từ Drive
-        if (typeof loadSettingsFromDrive === 'function') loadSettingsFromDrive();
-        if (typeof loadScheduleFromDrive === 'function') loadScheduleFromDrive();
-        if (typeof loadProductivityFromDrive === 'function') loadProductivityFromDrive();
-        
-        // Hiển thị app shell
-        window.showApp();
-    } else {
-        // Không có token -> Hiển thị màn hình Login
-        console.log('Không tìm thấy token. Hiển thị màn hình Login.');
-        window.showLogin('Vui lòng đăng nhập để tiếp tục');
-    }
-}
-
-/**
- * Hủy token (Đăng xuất)
- */
-function revokeToken() {
-    const token = window.gapi.client.getToken();
-    if (token !== null) {
-        google.accounts.oauth2.revoke(token.access_token, () => {
-            console.log('Token đã bị hủy');
-        });
-        
-        // Clear state
-        gapi.client.setToken(null);
+        localStorage.removeItem('gportal_access_token');
         AppState.isLoggedIn = false;
         
-        // Cập nhật UI
         updateAuthUI();
-        
-        // Quay lại màn hình Login
-        window.showLogin('Bạn đã đăng xuất');
+        window.showLogin('Bạn đã đăng xuất khỏi G-Portal');
+    } else {
+        handleLoginClick();
     }
 }
 
 /**
- * Cập nhật UI dựa trên trạng thái đăng nhập
+ * Cập nhật giao diện UI nút kết nối
  */
 function updateAuthUI() {
     const authBtn = document.getElementById('btn-google-auth');
@@ -138,8 +88,7 @@ function updateAuthUI() {
 }
 
 /**
- * Callback được gọi khi token response được nhận
- * (Được gắn trong googleSync.js khi khởi tạo tokenClient)
+ * Callback được gọi từ googleSync.js khi Token Response được trả về
  */
 window.handleTokenResponse = function(tokenResponse) {
     if (tokenResponse.error !== undefined) {
@@ -148,17 +97,55 @@ window.handleTokenResponse = function(tokenResponse) {
         return;
     }
 
-    // Thành công
+    // Đăng nhập thành công, lưu lại token để dùng cho các phiên sau (F5)
     AppState.isLoggedIn = true;
-    console.log('Đăng nhập thành công!');
+    console.log('✓ Xác thực token Google thành công!');
+    
+    localStorage.setItem('gportal_access_token', JSON.stringify({
+        token: tokenResponse.access_token,
+        expiry: new Date().getTime() + (tokenResponse.expires_in * 1000)
+    }));
     
     updateAuthUI();
     
-    // Load dữ liệu từ Drive
-    if (typeof loadSettingsFromDrive === 'function') loadSettingsFromDrive();
-    if (typeof loadScheduleFromDrive === 'function') loadScheduleFromDrive();
-    if (typeof loadProductivityFromDrive === 'function') loadProductivityFromDrive();
+    // Mở khóa UI ẩn màn hình login, hiện portal
+    if (typeof window.showApp === 'function') window.showApp();
     
-    // Hiển thị app shell
-    window.showApp();
+    // Tải dữ liệu từ Drive
+    if (typeof window.loadSettingsFromDrive === 'function') window.loadSettingsFromDrive();
+    if (typeof window.loadScheduleFromDrive === 'function') window.loadScheduleFromDrive();
+    if (typeof window.loadProductivityFromDrive === 'function') window.loadProductivityFromDrive();
+};
+
+/**
+ * Kiểm tra xem phiên đăng nhập cũ còn hiệu lực không (được gọi từ googleSync.js)
+ */
+window.checkExistingToken = function() {
+    const storedTokenStr = localStorage.getItem('gportal_access_token');
+    if (storedTokenStr) {
+        try {
+            const storedToken = JSON.parse(storedTokenStr);
+            if (new Date().getTime() < storedToken.expiry) {
+                // Token còn hiệu lực -> Set lại token cho GAPI Client
+                gapi.client.setToken({ access_token: storedToken.token });
+                AppState.isLoggedIn = true;
+                
+                updateAuthUI();
+                if (typeof window.showApp === 'function') window.showApp();
+                
+                // Khôi phục dữ liệu
+                if (typeof window.loadSettingsFromDrive === 'function') window.loadSettingsFromDrive();
+                if (typeof window.loadScheduleFromDrive === 'function') window.loadScheduleFromDrive();
+                if (typeof window.loadProductivityFromDrive === 'function') window.loadProductivityFromDrive();
+                
+                console.log('✓ Đã khôi phục phiên đăng nhập cũ thành công.');
+            } else {
+                // Token hết hạn
+                localStorage.removeItem('gportal_access_token');
+                if (typeof window.showLogin === 'function') window.showLogin('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.');
+            }
+        } catch (e) {
+            localStorage.removeItem('gportal_access_token');
+        }
+    }
 };
