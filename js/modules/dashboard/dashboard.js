@@ -1,3 +1,19 @@
+/**
+ * dashboard.js - Dashboard Module
+ *
+ * FIX QUAN TRỌNG (so với bản cũ):
+ * - Bản cũ dùng các ID không tồn tại trong index.html (vd: 'kpi-calls',
+ *   'kpi-progress', 'kpi-percent') trong khi HTML thực tế dùng
+ *   'kpi-calls-month', 'kpi-progress-month', 'kpi-percent-month'...
+ *   -> document.getElementById(...) trả về null -> gán .innerText/.style
+ *   trên null làm toàn bộ hàm updateDashboard() bị dừng giữa chừng bởi lỗi,
+ *   khiến biểu đồ và các KPI phía sau không bao giờ được vẽ.
+ * - Đã khớp lại đúng toàn bộ ID theo index.html, đồng thời bổ sung:
+ *     + KPI Tuần (kpi-calls-week / kpi-progress-week / kpi-percent-week)
+ *     + Tổng công tính lương (kpi-cong) = Ngày công + Ngày OT * hệ số quy đổi
+ *       (lấy từ Cài đặt > coefficients.coeffOtCong)
+ */
+
 let dashboardChart = null;
 let dashDate = new Date(); // Tháng đang xem trên Dashboard
 
@@ -49,7 +65,8 @@ window.updateDashboard = function () {
 
     document.getElementById('dash-month-display').innerText = `Tháng ${(month + 1).toString().padStart(2, '0')}/${year}`;
 
-    let totalCalls = 0;
+    let totalCallsMonth = 0;
+    let totalCallsWeek = 0;
     let workDays = 0;
     let otDays = 0;
     let totalLateSec = 0;
@@ -61,8 +78,18 @@ window.updateDashboard = function () {
     const schData = window.monthlyScheduleData || {};
     const prodData = window.monthlyProductivityData || {};
 
+    // Xác định khoảng ngày của "tuần này" (Chủ nhật -> Thứ 7, chứa ngày hôm nay thật)
+    const today = new Date();
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - today.getDay()); // lùi về Chủ nhật
+    weekStart.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
+
     for (let day = 1; day <= daysInMonth; day++) {
         const dateKey = `${year}-${(month + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+        const dateObj = new Date(year, month, day);
 
         // Trục X của biểu đồ
         chartLabels.push(day.toString());
@@ -74,9 +101,10 @@ window.updateDashboard = function () {
         }
 
         // Thống kê Năng suất
+        let dayTotal = 0;
         if (prodData[dateKey]) {
-            const dayTotal = prodData[dateKey].total || 0;
-            totalCalls += dayTotal;
+            dayTotal = prodData[dateKey].total || 0;
+            totalCallsMonth += dayTotal;
             chartData.push(dayTotal);
 
             if (prodData[dateKey].timeLate) totalLateSec += timeStrToSeconds(prodData[dateKey].timeLate);
@@ -84,30 +112,60 @@ window.updateDashboard = function () {
         } else {
             chartData.push(0);
         }
+
+        // Cộng dồn cho KPI tuần nếu ngày này rơi vào tuần hiện tại
+        if (dateObj >= weekStart && dateObj <= weekEnd) {
+            totalCallsWeek += dayTotal;
+        }
     }
 
-    // 1. Render KPI Mục Tiêu
+    // Lấy các tham số từ Cài đặt
     let target = 2000;
-    if (window.portalSettings && window.portalSettings.coefficients && window.portalSettings.coefficients.kpiTarget) {
-        target = window.portalSettings.coefficients.kpiTarget;
+    let coeffOtCong = 0.5;
+    if (window.portalSettings && window.portalSettings.coefficients) {
+        target = window.portalSettings.coefficients.kpiTarget || 2000;
+        coeffOtCong = (window.portalSettings.coefficients.coeffOtCong ?? 0.5);
     }
-    let percent = target > 0 ? ((totalCalls / target) * 100).toFixed(1) : 0;
-    if (percent > 100) percent = 100; // Cap thanh Progress ở 100%
 
-    document.getElementById('kpi-calls').innerText = `${totalCalls} / ${target}`;
-    document.getElementById('kpi-progress').style.width = `${percent}%`;
-    document.getElementById('kpi-percent').innerText = `Hoàn thành: ${percent}%`;
+    // 1. Render KPI Tháng
+    let percentMonth = target > 0 ? ((totalCallsMonth / target) * 100).toFixed(1) : 0;
+    if (percentMonth > 100) percentMonth = 100;
 
-    // 2. Render Ngày công
-    document.getElementById('kpi-workdays').innerText = `${workDays} Ngày`;
-    document.getElementById('kpi-ot').innerText = `Tăng cường (OT): ${otDays} ngày`;
+    setText('kpi-calls-month', `${totalCallsMonth} / ${target}`);
+    setWidth('kpi-progress-month', `${percentMonth}%`);
+    setText('kpi-percent-month', `Hoàn thành: ${percentMonth}%`);
 
-    // 3. Render Vi phạm
-    document.getElementById('kpi-late').innerText = `Trễ: ${secondsToTimeStr(totalLateSec)}`;
-    document.getElementById('kpi-early').innerText = `Về sớm: ${secondsToTimeStr(totalEarlySec)}`;
+    // 2. Render KPI Tuần (mục tiêu tuần ước tính = mục tiêu tháng / 4.33 tuần)
+    const weekTarget = Math.round(target / 4.33) || 0;
+    let percentWeek = weekTarget > 0 ? ((totalCallsWeek / weekTarget) * 100).toFixed(1) : 0;
+    if (percentWeek > 100) percentWeek = 100;
 
-    // 4. Vẽ Biểu đồ
+    setText('kpi-calls-week', `${totalCallsWeek} / ${weekTarget}`);
+    setWidth('kpi-progress-week', `${percentWeek}%`);
+    setText('kpi-percent-week', `Hoàn thành: ${percentWeek}%`);
+
+    // 3. Render Ngày công & Tổng công tính lương
+    const tongCong = (workDays + otDays * coeffOtCong).toFixed(2);
+    setText('kpi-workdays', `${workDays} Ngày`);
+    setText('kpi-ot', `Tăng cường (OT): ${otDays} ngày`);
+    setText('kpi-cong', `Tổng công tính lương: ${tongCong}`);
+
+    // 4. Render Vi phạm
+    setText('kpi-late', `Trễ: ${secondsToTimeStr(totalLateSec)}`);
+    setText('kpi-early', `Về sớm: ${secondsToTimeStr(totalEarlySec)}`);
+
+    // 5. Vẽ Biểu đồ
     drawProductivityChart(chartLabels, chartData);
+}
+
+function setText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.innerText = text;
+}
+
+function setWidth(id, width) {
+    const el = document.getElementById(id);
+    if (el) el.style.width = width;
 }
 
 function drawProductivityChart(labels, data) {
