@@ -14,32 +14,45 @@ const DISCOVERY_DOCS = [
     'https://tasks.googleapis.com/$discovery/rest/v1' 
 ]; 
 
-// Đã bổ sung đủ quyền Tasks, Calendar, Drive để thực hiện đồng bộ (Sửa lỗi không đồng bộ task)
 const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks';
 
 let tokenClient; 
 let gapiInited = false;
+let gisInited = false;
 
 // 1. Hàm Tải GAPI
-function gapiLoaded() {
+window.gapiLoaded = function() {
     gapi.load('client', initializeGapiClient);
-}
+};
 
 // 2. Khởi tạo GAPI Client
 async function initializeGapiClient() {
-    await gapi.client.init({
-        apiKey: API_KEY,
-        discoveryDocs: DISCOVERY_DOCS,
-    });
-    gapiInited = true;
+    try {
+        await gapi.client.init({
+            apiKey: API_KEY,
+            discoveryDocs: DISCOVERY_DOCS,
+        });
+        gapiInited = true;
+        checkAllReady(); // Kiểm tra xem GIS tải xong chưa
+    } catch (e) {
+        console.error("Lỗi khởi tạo GAPI:", e);
+    }
 }
 
 // 3. Hàm tải Google Identity Services (GIS)
-function gisLoaded() {
-    initGoogleAuth();
+window.gisLoaded = function() {
+    gisInited = true;
+    checkAllReady(); // Kiểm tra xem GAPI tải xong chưa
+};
+
+// 4. KIỂM TRA ĐỒNG BỘ: Chỉ chạy khi CẢ 2 ĐÃ SẴN SÀNG (Sửa lỗi crash giao diện)
+function checkAllReady() {
+    if (gapiInited && gisInited) {
+        initGoogleAuth();
+    }
 }
 
-// 4. Khởi tạo xác thực Google (Tự động đăng nhập lại khi F5 / Reload trang)
+// 5. Khởi tạo xác thực Google (Tự động đăng nhập lại khi F5)
 function initGoogleAuth() {
     tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
@@ -48,14 +61,15 @@ function initGoogleAuth() {
             if (tokenResponse && tokenResponse.access_token) {
                 // Đăng nhập thành công, lưu token vào máy tính
                 localStorage.setItem('gapi_token', JSON.stringify(tokenResponse));
-                gapi.client.setToken(tokenResponse);
-                AppState.isLoggedIn = true;
-                window.showApp();
                 
-                // Tự động tải lại dữ liệu ngầm từ Drive
-                if (typeof window.loadSettingsFromDrive === 'function') window.loadSettingsFromDrive();
-                if (typeof window.loadScheduleFromDrive === 'function') window.loadScheduleFromDrive();
-                if (typeof window.loadProductivityFromDrive === 'function') window.loadProductivityFromDrive();
+                // Gán token cho GAPI 
+                if (gapi.client) gapi.client.setToken(tokenResponse);
+                
+                AppState.isLoggedIn = true;
+                if (typeof window.showApp === 'function') window.showApp();
+                
+                // Tải dữ liệu giao diện
+                loadAllDataFromDrive();
             }
         },
     });
@@ -66,44 +80,39 @@ function initGoogleAuth() {
         try {
             const savedToken = JSON.parse(savedTokenStr);
             // Gán lại token đang có trên trình duyệt cho gapi
-            gapi.client.setToken(savedToken);
-            AppState.isLoggedIn = true;
-            window.showApp();
-            
-            // Tải dữ liệu ngầm sau khi khôi phục đăng nhập
-            if (typeof window.loadSettingsFromDrive === 'function') window.loadSettingsFromDrive();
-            if (typeof window.loadScheduleFromDrive === 'function') window.loadScheduleFromDrive();
-            if (typeof window.loadProductivityFromDrive === 'function') window.loadProductivityFromDrive();
+            if (gapi.client) {
+                gapi.client.setToken(savedToken);
+                AppState.isLoggedIn = true;
+                if (typeof window.showApp === 'function') window.showApp();
+                
+                // Tải dữ liệu ngầm sau khi khôi phục đăng nhập
+                loadAllDataFromDrive();
+            }
         } catch (e) {
             console.error("Lỗi parse token:", e);
             localStorage.removeItem('gapi_token');
-            window.showLogin();
+            if (typeof window.showLogin === 'function') window.showLogin();
         }
     }
 }
 
-// 5. Xử lý nút Click Đăng nhập 
+// Gọi API lấy dữ liệu Settings và Calendar
+function loadAllDataFromDrive() {
+    if (typeof window.loadSettingsFromDrive === 'function') window.loadSettingsFromDrive();
+    if (typeof window.loadScheduleFromDrive === 'function') window.loadScheduleFromDrive();
+    if (typeof window.loadProductivityFromDrive === 'function') window.loadProductivityFromDrive();
+}
+
+// 6. Xử lý nút Click Đăng nhập 
 window.handleAuthClick = function() {
-    // Nếu tokenClient đã sẵn sàng
     if (tokenClient) {
         tokenClient.requestAccessToken({prompt: 'consent'});
     } else {
-        // Nếu tokenClient chưa sẵn sàng, thử khởi tạo lại cưỡng bức
-        console.warn("tokenClient chưa sẵn sàng, đang thử khởi tạo lại...");
-        try {
-            initGoogleAuth(); 
-            if (tokenClient) {
-                tokenClient.requestAccessToken({prompt: 'consent'});
-            } else {
-                alert("Hệ thống Google đang bị nghẽn mạng hoặc tải chậm. Vui lòng F5 lại trang và chờ 3 giây rồi thử lại!");
-            }
-        } catch (error) {
-            console.error("Lỗi khởi tạo Google Auth:", error);
-            alert("Lỗi tải thư viện Google! Hãy kiểm tra lại kết nối mạng hoặc tắt trình chặn quảng cáo (Adblock).");
-        }
+        alert("Hệ thống Google đang được kết nối, vui lòng F5 và chờ trong giây lát.");
     }
 }
-// 6. Xử lý nút Click Đăng xuất
+
+// 7. Xử lý nút Click Đăng xuất
 window.handleSignoutClick = function() {
     const token = gapi.client.getToken();
     if (token !== null) {
@@ -112,14 +121,13 @@ window.handleSignoutClick = function() {
         });
         gapi.client.setToken('');
     }
-    // Xóa session ở trình duyệt
     localStorage.removeItem('gapi_token'); 
     AppState.isLoggedIn = false;
-    window.showLogin();
+    if (typeof window.showLogin === 'function') window.showLogin();
 };
 
 // ========================================================
-// PHẦN LOGIC ĐỒNG BỘ LỊCH VÀ TASKS (Đã bao gồm hàm chuẩn hóa)
+// PHẦN LOGIC ĐỒNG BỘ LỊCH VÀ TASKS 
 // ========================================================
 
 async function deleteCalendarEvent(dateStr) { 
@@ -149,9 +157,8 @@ async function deleteCalendarEvent(dateStr) {
 }
 
 window.syncShiftToGoogle = async function(dateStr, shiftCode, shiftTime, description) {
-    if (!AppState.isLoggedIn) return;
+    if (!AppState.isLoggedIn || !gapi.client) return;
     
-    // Xóa sự kiện cũ trong ngày trước khi đồng bộ cái mới
     await deleteCalendarEvent(dateStr);
     
     let startTimeStr = "08:00:00"; 
@@ -184,9 +191,8 @@ window.syncShiftToGoogle = async function(dateStr, shiftCode, shiftTime, descrip
 };
 
 window.syncTaskToGoogle = async function(taskTitle, taskNotes, dueDateStr) {
-    if (!AppState.isLoggedIn) return;
+    if (!AppState.isLoggedIn || !gapi.client) return;
     
-    // Hàm đẩy task lên Google Tasks sử dụng gapi.client.tasks
     try {
         const task = {
             title: taskTitle,
@@ -195,7 +201,7 @@ window.syncTaskToGoogle = async function(taskTitle, taskNotes, dueDateStr) {
         };
         
         await gapi.client.tasks.tasks.insert({
-            tasklist: '@default', // Lưu vào danh sách Mặc định của người dùng
+            tasklist: '@default',
             resource: task
         });
         console.log(`Đã đồng bộ Task [${taskTitle}] thành công.`);
