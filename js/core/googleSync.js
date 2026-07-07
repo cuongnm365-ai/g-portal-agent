@@ -22,7 +22,7 @@ const DISCOVERY_DOCS = [
     'https://tasks.googleapis.com/$discovery/rest/v1'
 ];
 
-const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks';
+const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/userinfo.profile';
 
 let tokenClient;
 let gapiInited = false;
