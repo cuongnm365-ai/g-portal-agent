@@ -1,279 +1,191 @@
-/**
- * googleSync.js - Google OAuth & API Initialization
- * Quản lý: OAuth initialization, API discovery, Token callback
- *
- * FIX QUAN TRỌNG (so với bản cũ):
- * 1. syncGoogleTask() trước đây yêu cầu tham số taskBody phải là OBJECT
- *    (có .title/.notes) nhưng nơi gọi (schedule.js) lại truyền vào một
- *    CHUỖI TEXT (vd "CHAT") -> Google Tasks API từ chối request, lỗi bị
- *    catch nuốt mất (chỉ log console) -> nhìn như task "không đẩy lên".
- *    Đã đổi chữ ký hàm thành syncGoogleTask(dateStr, taskName, notes) và
- *    tự dựng object hợp lệ bên trong, có thêm trường "due" bắt buộc.
- * 2. deleteGoogleTask() cũng đổi chữ ký còn (dateStr) - tự tìm và xoá đúng
- *    task PCCV của ngày đó, được gọi từ schedule.js khi PCCV bị gỡ bỏ.
- * 3. Bổ sung console.log/console.error chi tiết ở từng bước khởi tạo GSI/GAPI
- *    để chẩn đoán lỗi "F5 vẫn phải đăng nhập lại" (do lỗi này phụ thuộc
- *    trình duyệt/chính sách cookie, cần xem log Console mới xác định
- *    chính xác dừng ở bước nào).
- */
-
 const CLIENT_ID = '764929266866-62ua4ratuu6jimphrullociovmcdmkq9.apps.googleusercontent.com';
-const API_KEY = 'AIzaSyChHKJeaAnGQ5cVoSeqQQ8R-BgPK2DLv2Y'; // API_KEY hợp lệ lấy từ code gốc của bạn
-
+const API_KEY = 'AIzaSyChHKJeaAnGQ5cVoSeqQQ8R-BgPK2DLv2Y'; 
 const FOLDER_IDS = {
-    settings: '1j5-DPSFeUSmeDYxbR7fW0zJdlf-P2efp',
-    staffs: '1eNvquq7MhTfTDn1vwm7D7mEpORkTe5kQ',
-    productivity: '19BLiBpgwKnDlbqgHtRPJFXs_jz3EMOXn',
-    shifts: '1I28OyoCO6jmPyS_50EnwHvyS8opFbkl2',
+    settings: '1j5-DPSFeUSmeDYxbR7fW0zJdlf-P2efp', 
+    staffs: '1eNvquq7MhTfTDn1vwm7D7mEpORkTe5kQ', 
+    productivity: '19BLiBpgwKnDlbqgHtRPJFXs_jz3EMOXn', 
+    shifts: '1I28OyoCO6jmPyS_50EnwHvyS8opFbkl2', 
     tasks: '1xOntuC0tf4F5kn8-QmzFRpTYR4Y4ebzO'
-};
-
-window.GPORTAL_FOLDERS = FOLDER_IDS;
-
+}; 
+window.GPORTAL_FOLDERS = FOLDER_IDS; 
 const DISCOVERY_DOCS = [
     'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest',
     'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest',
-    'https://tasks.googleapis.com/$discovery/rest/v1'
-];
+    'https://tasks.googleapis.com/$discovery/rest/v1' 
+]; 
 
+// Đã bổ sung đủ quyền Tasks, Calendar, Drive để thực hiện đồng bộ (Sửa lỗi không đồng bộ task)
 const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks';
 
-// ----------------------------------------------------
-// KHỞI TẠO BIẾN TOÀN CỤC ĐỂ AUTH.JS CÓ THỂ GỌI ĐƯỢC
-// ----------------------------------------------------
-window.tokenClient = null;
+let tokenClient; 
 let gapiInited = false;
-let gsiInited = false;
 
-// CƠ CHẾ MỚI: Chủ động tải thư viện Google để chống lỗi khi F5
-document.addEventListener('DOMContentLoaded', () => {
-    console.log('[G-Portal Auth] Bắt đầu tải thư viện Google Identity Services (GSI)...');
+// 1. Hàm Tải GAPI
+function gapiLoaded() {
+    gapi.load('client', initializeGapiClient);
+}
 
-    // Tải Google Identity Services (GSI)
-    const gsiScript = document.createElement('script');
-    gsiScript.src = "https://accounts.google.com/gsi/client";
-    gsiScript.async = true;
-    gsiScript.defer = true;
-    gsiScript.onload = () => {
-        try {
-            window.tokenClient = google.accounts.oauth2.initTokenClient({
-                client_id: CLIENT_ID,
-                scope: SCOPES,
-                callback: (tokenResponse) => {
-                    console.log('[G-Portal Auth] GSI callback nhận được phản hồi:', tokenResponse.error ? `LỖI: ${tokenResponse.error}` : 'THÀNH CÔNG');
-                    if (typeof window.handleTokenResponse === 'function') {
-                        window.handleTokenResponse(tokenResponse);
-                    }
-                },
-            });
-            gsiInited = true;
-            console.log('[G-Portal Auth] ✓ GSI (tokenClient) đã khởi tạo xong.');
-            checkAuthReady();
-        } catch (err) {
-            console.error('[G-Portal Auth] ❌ Lỗi khởi tạo GSI tokenClient:', err);
-        }
-    };
-    gsiScript.onerror = () => console.error('[G-Portal Auth] ❌ Không tải được script GSI (accounts.google.com). Kiểm tra mạng/adblock.');
-    document.body.appendChild(gsiScript);
+// 2. Khởi tạo GAPI Client
+async function initializeGapiClient() {
+    await gapi.client.init({
+        apiKey: API_KEY,
+        discoveryDocs: DISCOVERY_DOCS,
+    });
+    gapiInited = true;
+}
 
-    // Tải Google API Client (GAPI)
-    console.log('[G-Portal Auth] Bắt đầu tải thư viện Google API Client (GAPI)...');
-    const gapiScript = document.createElement('script');
-    gapiScript.src = "https://apis.google.com/js/api.js";
-    gapiScript.async = true;
-    gapiScript.defer = true;
-    gapiScript.onload = () => {
-        gapi.load('client', async () => {
-            try {
-                await gapi.client.init({
-                    apiKey: API_KEY,
-                    discoveryDocs: DISCOVERY_DOCS,
-                });
-                gapiInited = true;
-                console.log('[G-Portal Auth] ✓ GAPI client.init() thành công (Drive/Calendar/Tasks discovery OK).');
-                checkAuthReady();
-            } catch (err) {
-                // FIX: bắt lỗi rõ ràng thay vì để rơi mất (unhandled rejection) -
-                // trước đây nếu client.init() lỗi (vd sai API key / referrer bị chặn),
-                // gapiInited không bao giờ được set true và checkAuthReady() không
-                // bao giờ được gọi lại từ nhánh này -> không thể khôi phục phiên đăng nhập.
-                console.error('[G-Portal Auth] ❌ Lỗi gapi.client.init() - kiểm tra API_KEY / referrer được phép trong Google Cloud Console:', err);
+// 3. Hàm tải Google Identity Services (GIS)
+function gisLoaded() {
+    initGoogleAuth();
+}
+
+// 4. Khởi tạo xác thực Google (Tự động đăng nhập lại khi F5 / Reload trang)
+function initGoogleAuth() {
+    tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPES,
+        callback: (tokenResponse) => {
+            if (tokenResponse && tokenResponse.access_token) {
+                // Đăng nhập thành công, lưu token vào máy tính
+                localStorage.setItem('gapi_token', JSON.stringify(tokenResponse));
+                gapi.client.setToken(tokenResponse);
+                AppState.isLoggedIn = true;
+                window.showApp();
+                
+                // Tự động tải lại dữ liệu ngầm từ Drive
+                if (typeof window.loadSettingsFromDrive === 'function') window.loadSettingsFromDrive();
+                if (typeof window.loadScheduleFromDrive === 'function') window.loadScheduleFromDrive();
+                if (typeof window.loadProductivityFromDrive === 'function') window.loadProductivityFromDrive();
             }
-        });
-    };
-    gapiScript.onerror = () => console.error('[G-Portal Auth] ❌ Không tải được script GAPI (apis.google.com). Kiểm tra mạng/adblock.');
-    document.body.appendChild(gapiScript);
-});
-
-// Kiểm tra khi cả 2 thư viện đã load thành công mới khôi phục phiên đăng nhập cũ
-function checkAuthReady() {
-    console.log(`[G-Portal Auth] checkAuthReady(): gapiInited=${gapiInited}, gsiInited=${gsiInited}`);
-    if (gapiInited && gsiInited) {
-        console.log('[G-Portal Auth] ✓ Toàn bộ hệ thống API Google đã kết nối thành công! Đang kiểm tra token cũ...');
-        if (typeof window.checkExistingToken === 'function') {
-            window.checkExistingToken();
-        } else {
-            console.error('[G-Portal Auth] ❌ Không tìm thấy window.checkExistingToken (auth.js chưa tải xong hoặc lỗi thứ tự load script).');
+        },
+    });
+    
+    // Kiểm tra xem trước đó đã đăng nhập chưa (Chạy mỗi khi F5)
+    const savedTokenStr = localStorage.getItem('gapi_token');
+    if (savedTokenStr) {
+        try {
+            const savedToken = JSON.parse(savedTokenStr);
+            // Gán lại token đang có trên trình duyệt cho gapi
+            gapi.client.setToken(savedToken);
+            AppState.isLoggedIn = true;
+            window.showApp();
+            
+            // Tải dữ liệu ngầm sau khi khôi phục đăng nhập
+            if (typeof window.loadSettingsFromDrive === 'function') window.loadSettingsFromDrive();
+            if (typeof window.loadScheduleFromDrive === 'function') window.loadScheduleFromDrive();
+            if (typeof window.loadProductivityFromDrive === 'function') window.loadProductivityFromDrive();
+        } catch (e) {
+            console.error("Lỗi parse token:", e);
+            localStorage.removeItem('gapi_token');
+            window.showLogin();
         }
     }
 }
 
-// ----------------------------------------------------
-// CÁC HÀM ĐỒNG BỘ GOOGLE CALENDAR VÀ GOOGLE TASKS
-// ----------------------------------------------------
+// 5. Xử lý nút Click Đăng nhập 
+window.handleAuthClick = function() {
+    if (tokenClient) {
+        tokenClient.requestAccessToken({prompt: 'consent'});
+    }
+}
 
-window.syncCalendarEvent = async function(dateStr, shiftCode, shiftTime, description) {
-    try {
-        let startTimeStr = "08:00:00";
-        let endTimeStr = "17:00:00";
-        if (shiftTime && shiftTime.includes("-")) {
-            const parts = shiftTime.split("-");
-            startTimeStr = parts[0].trim() + ":00";
-            endTimeStr = parts[1].trim() + ":00";
-        }
-
-        const startDateTime = `${dateStr}T${startTimeStr}+07:00`;
-        const endDateTime = `${dateStr}T${endTimeStr}+07:00`;
-        const event = {
-            'summary': `Ca: ${shiftCode}`,
-            'description': description,
-            'start': { 'dateTime': startDateTime, 'timeZone': 'Asia/Ho_Chi_Minh' },
-            'end': { 'dateTime': endDateTime, 'timeZone': 'Asia/Ho_Chi_Minh' }
-        };
-
-        const minTime = `${dateStr}T00:00:00+07:00`;
-        const maxTime = `${dateStr}T23:59:59+07:00`;
-
-        let response = await gapi.client.calendar.events.list({
-            'calendarId': 'primary',
-            'timeMin': minTime,
-            'timeMax': maxTime,
-            'q': 'Ca:',
-            'singleEvents': true
+// 6. Xử lý nút Click Đăng xuất
+window.handleSignoutClick = function() {
+    const token = gapi.client.getToken();
+    if (token !== null) {
+        google.accounts.oauth2.revoke(token.access_token, () => {
+            console.log('Đã thu hồi quyền truy cập (Revoked token)');
         });
+        gapi.client.setToken('');
+    }
+    // Xóa session ở trình duyệt
+    localStorage.removeItem('gapi_token'); 
+    AppState.isLoggedIn = false;
+    window.showLogin();
+};
 
-        const events = response.result.items;
+// ========================================================
+// PHẦN LOGIC ĐỒNG BỘ LỊCH VÀ TASKS (Đã bao gồm hàm chuẩn hóa)
+// ========================================================
+
+async function deleteCalendarEvent(dateStr) { 
+    try { 
+        const minTime = `${dateStr}T00:00:00+07:00`; 
+        const maxTime = `${dateStr}T23:59:59+07:00`; 
+        let response = await gapi.client.calendar.events.list({ 
+            'calendarId': 'primary',
+            'timeMin': minTime, 
+            'timeMax': maxTime, 
+            'q': 'Ca:', 
+            'singleEvents': true 
+        });
+        
+        const events = response.result.items; 
         if (events && events.length > 0) {
-            let targetEvent = events.find(e => e.summary && e.summary.includes("Ca:"));
-            if (targetEvent) {
-                await gapi.client.calendar.events.update({
+            for (const ev of events) {
+                await gapi.client.calendar.events.delete({
                     'calendarId': 'primary',
-                    'eventId': targetEvent.id,
-                    'resource': event
+                    'eventId': ev.id
                 });
-                console.log(`✓ Updated Google Calendar for ${dateStr}`);
-                return;
             }
         }
+    } catch (err) {
+        console.error("Lỗi khi xóa sự kiện Lịch:", err);
+    }
+}
 
+window.syncShiftToGoogle = async function(dateStr, shiftCode, shiftTime, description) {
+    if (!AppState.isLoggedIn) return;
+    
+    // Xóa sự kiện cũ trong ngày trước khi đồng bộ cái mới
+    await deleteCalendarEvent(dateStr);
+    
+    let startTimeStr = "08:00:00"; 
+    let endTimeStr = "17:00:00"; 
+    if (shiftTime && shiftTime.includes("-")) { 
+        const parts = shiftTime.split("-"); 
+        startTimeStr = parts[0].trim() + ":00"; 
+        endTimeStr = parts[1].trim() + ":00"; 
+    } 
+    
+    const startDateTime = `${dateStr}T${startTimeStr}+07:00`; 
+    const endDateTime = `${dateStr}T${endTimeStr}+07:00`; 
+    
+    const event = { 
+        'summary': `Ca: ${shiftCode} - Chính chủ`, 
+        'description': description, 
+        'start': { 'dateTime': startDateTime, 'timeZone': 'Asia/Ho_Chi_Minh' }, 
+        'end': { 'dateTime': endDateTime, 'timeZone': 'Asia/Ho_Chi_Minh' } 
+    }; 
+    
+    try {
         await gapi.client.calendar.events.insert({
             'calendarId': 'primary',
             'resource': event
         });
-        console.log(`✓ Created Google Calendar event for ${dateStr}`);
+        console.log(`Đã đồng bộ Lịch ngày ${dateStr} thành công.`);
     } catch (err) {
-        console.error("Lỗi Calendar:", err);
+        console.error("Lỗi đồng bộ Lịch: ", err);
     }
 };
 
-window.deleteCalendarEvent = async function(dateStr) {
+window.syncTaskToGoogle = async function(taskTitle, taskNotes, dueDateStr) {
+    if (!AppState.isLoggedIn) return;
+    
+    // Hàm đẩy task lên Google Tasks sử dụng gapi.client.tasks
     try {
-        const minTime = `${dateStr}T00:00:00+07:00`;
-        const maxTime = `${dateStr}T23:59:59+07:00`;
-        let response = await gapi.client.calendar.events.list({
-            'calendarId': 'primary',
-            'timeMin': minTime,
-            'timeMax': maxTime,
-            'q': 'Ca:',
-            'singleEvents': true
-        });
-        const events = response.result.items;
-        if (events && events.length > 0) {
-            for (let e of events) {
-                if (e.summary && e.summary.includes("Ca:")) {
-                    await gapi.client.calendar.events.delete({
-                        'calendarId': 'primary',
-                        'eventId': e.id
-                    });
-                    console.log(`✓ Deleted Google Calendar event for ${dateStr}`);
-                }
-            }
-        }
-    } catch (err) {
-        console.error("Lỗi xóa Calendar:", err);
-    }
-};
-
-/**
- * FIX: Chữ ký hàm đổi từ (dateStr, taskBody{object}) -> (dateStr, taskName, notes).
- * Hàm tự dựng object hợp lệ cho Google Tasks API (bắt buộc phải có "due" hợp lệ
- * để lần sau còn tìm lại đúng task theo ngày mà cập nhật, tránh tạo trùng lặp).
- */
-window.syncGoogleTask = async function(dateStr, taskName, notes) {
-    try {
-        const taskBody = {
-            title: `PCCV: ${taskName}`,
-            notes: notes || '',
-            due: `${dateStr}T00:00:00.000Z`
+        const task = {
+            title: taskTitle,
+            notes: taskNotes,
+            due: `${dueDateStr}T00:00:00.000Z`
         };
-
-        let response = await gapi.client.tasks.tasks.list({
-            'tasklist': '@default',
-            'dueMin': `${dateStr}T00:00:00.000Z`,
-            'dueMax': `${dateStr}T23:59:59.000Z`,
-            'showCompleted': true,
-            'showHidden': true
+        
+        await gapi.client.tasks.tasks.insert({
+            tasklist: '@default', // Lưu vào danh sách Mặc định của người dùng
+            resource: task
         });
-        const tasks = response.result.items || [];
-        let targetTask = tasks.find(t => t.title && t.title.startsWith('PCCV:'));
-
-        if (targetTask) {
-            targetTask.title = taskBody.title;
-            targetTask.notes = taskBody.notes;
-            targetTask.due = taskBody.due;
-            await gapi.client.tasks.tasks.update({
-                'tasklist': '@default',
-                'task': targetTask.id,
-                'resource': targetTask
-            });
-            console.log(`✓ Updated Google Task for ${dateStr}`);
-        } else {
-            await gapi.client.tasks.tasks.insert({
-                'tasklist': '@default',
-                'resource': taskBody
-            });
-            console.log(`✓ Created Google Task for ${dateStr}`);
-        }
+        console.log(`Đã đồng bộ Task [${taskTitle}] thành công.`);
     } catch (err) {
-        console.error("Lỗi Tasks:", err);
-    }
-};
-
-/**
- * FIX: Trước đây hàm này chưa từng được gọi ở đâu -> PCCV bị gỡ khỏi 1 ngày
- * thì Task cũ trên Google vẫn còn tồn tại vĩnh viễn. Giờ được gọi từ
- * schedule.js mỗi khi dayData.task rỗng.
- */
-window.deleteGoogleTask = async function(dateStr) {
-    try {
-        let response = await gapi.client.tasks.tasks.list({
-            'tasklist': '@default',
-            'dueMin': `${dateStr}T00:00:00.000Z`,
-            'dueMax': `${dateStr}T23:59:59.000Z`,
-            'showCompleted': true,
-            'showHidden': true
-        });
-        const tasks = response.result.items || [];
-        for (let t of tasks) {
-            if (t.title && t.title.startsWith('PCCV:')) {
-                await gapi.client.tasks.tasks.delete({
-                    'tasklist': '@default',
-                    'task': t.id
-                });
-                console.log(`✓ Deleted Google Task for ${dateStr}`);
-            }
-        }
-    } catch (err) {
-        console.error("Lỗi xóa Tasks:", err);
+        console.error("Lỗi đồng bộ Task: ", err);
     }
 };
