@@ -4,9 +4,18 @@ const AppState = {
     isLoggedIn: false
 };
 
-document.addEventListener('DOMContentLoaded', () => {
-    try { initTheme(); } catch (e) { console.error('initTheme error:', e); }
-    try { initRouter(); } catch (e) { console.error('initRouter error:', e); }
+document.addEventListener('DOMContentLoaded', () => { 
+    try { initTheme(); } catch (e) { console.error('initTheme error:', e); } 
+    try { initRouter(); } catch (e) { console.error('initRouter error:', e); } 
+    
+    // Thêm đoạn này để tự động khôi phục giao diện nếu đã có token trong localStorage
+    const savedToken = localStorage.getItem('gapi_token');
+    if (savedToken) {
+        // Tạm thời ẩn màn hình login và show app shell trong lúc chờ Google xác thực ngầm
+        window.showApp();
+    } else {
+        window.showLogin();
+    }
 });
 
 function initTheme() {
