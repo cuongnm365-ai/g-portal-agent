@@ -84,11 +84,25 @@ function initGoogleAuth() {
 
 // 5. Xử lý nút Click Đăng nhập 
 window.handleAuthClick = function() {
+    // Nếu tokenClient đã sẵn sàng
     if (tokenClient) {
         tokenClient.requestAccessToken({prompt: 'consent'});
+    } else {
+        // Nếu tokenClient chưa sẵn sàng, thử khởi tạo lại cưỡng bức
+        console.warn("tokenClient chưa sẵn sàng, đang thử khởi tạo lại...");
+        try {
+            initGoogleAuth(); 
+            if (tokenClient) {
+                tokenClient.requestAccessToken({prompt: 'consent'});
+            } else {
+                alert("Hệ thống Google đang bị nghẽn mạng hoặc tải chậm. Vui lòng F5 lại trang và chờ 3 giây rồi thử lại!");
+            }
+        } catch (error) {
+            console.error("Lỗi khởi tạo Google Auth:", error);
+            alert("Lỗi tải thư viện Google! Hãy kiểm tra lại kết nối mạng hoặc tắt trình chặn quảng cáo (Adblock).");
+        }
     }
 }
-
 // 6. Xử lý nút Click Đăng xuất
 window.handleSignoutClick = function() {
     const token = gapi.client.getToken();
