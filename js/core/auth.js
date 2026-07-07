@@ -150,10 +150,13 @@ window.handleTokenResponse = function(tokenResponse) {
  */
 window.checkExistingToken = function() {
     const storedTokenStr = localStorage.getItem('gportal_access_token');
+    console.log('[G-Portal Auth] checkExistingToken(): token trong localStorage =', storedTokenStr ? 'CÓ' : 'KHÔNG CÓ');
 
     if (storedTokenStr) {
         try {
             const storedToken = JSON.parse(storedTokenStr);
+            const remainMin = Math.round((storedToken.expiry - new Date().getTime()) / 60000);
+            console.log(`[G-Portal Auth] Token còn hạn khoảng ${remainMin} phút.`);
             if (new Date().getTime() < storedToken.expiry) {
                 // Token còn hiệu lực -> Set lại token cho GAPI Client ngay, không cần gọi Google
                 gapi.client.setToken({ access_token: storedToken.token });
@@ -198,8 +201,13 @@ function attemptSilentLogin() {
 
     try {
         window.__gportalSilentAttempted = true;
-        // prompt: '' => không hiện bất kỳ UI nào; chỉ cấp token nếu đã có sẵn phiên/uỷ quyền
-        window.tokenClient.requestAccessToken({ prompt: '' });
+        console.log('[G-Portal Auth] Không có token hợp lệ trong localStorage -> thử xin cấp lại ngầm (prompt: none)...');
+        // prompt: 'none' => bắt buộc không hiện UI; chỉ cấp token nếu đã có sẵn phiên/uỷ quyền.
+        // Lưu ý: nếu trình duyệt chặn cookie bên thứ 3 (Safari mặc định, hoặc Chrome
+        // đang loại bỏ dần), bước này có thể không bao giờ gọi lại callback -> khi đó
+        // người dùng vẫn cần bấm nút đăng nhập thủ công như bình thường (giới hạn từ
+        // phía chính sách bảo mật của Google/trình duyệt, không phải lỗi code).
+        window.tokenClient.requestAccessToken({ prompt: 'none' });
     } catch (e) {
         console.log('Silent renew không khả dụng, cần đăng nhập thủ công.', e);
         window.__gportalSilentAttempted = false;
