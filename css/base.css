@@ -1,0 +1,94 @@
+/* ============================================================
+   BASE — biến màu, reset, layout khung (sidebar + main)
+   ============================================================ */
+:root[data-theme="dark"] {
+    --bg-primary: #0a0e1a;
+    --bg-secondary: #121a2e;
+    --bg-card: #182342;
+    --bg-elevated: #1e2a4a;
+    --text-main: #eef2ff;
+    --text-muted: #8b96b8;
+    --accent: #38bdf8;
+    --accent-2: #818cf8;
+    --accent-glow: rgba(56, 189, 248, 0.16);
+    --success: #22c55e;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --border-color: rgba(255, 255, 255, 0.06);
+    --sidebar-width: 68px;
+    --sidebar-expand: 250px;
+    --modal-bg: rgba(4, 8, 20, 0.75);
+    --shadow-soft: 0 4px 24px rgba(0,0,0,0.25);
+}
+:root[data-theme="light"] {
+    --bg-primary: #f4f6fb;
+    --bg-secondary: #ffffff;
+    --bg-card: #f1f4fa;
+    --bg-elevated: #e9edf7;
+    --text-main: #0f172a;
+    --text-muted: #64748b;
+    --accent: #0284c7;
+    --accent-2: #6366f1;
+    --accent-glow: rgba(2, 132, 199, 0.10);
+    --success: #16a34a;
+    --warning: #d97706;
+    --danger: #dc2626;
+    --border-color: rgba(15, 23, 42, 0.08);
+    --sidebar-width: 68px;
+    --sidebar-expand: 250px;
+    --modal-bg: rgba(15, 23, 42, 0.45);
+    --shadow-soft: 0 4px 24px rgba(15,23,42,0.06);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+html, body { height: 100%; }
+body {
+    background-color: var(--bg-primary);
+    color: var(--text-main);
+    overflow-x: hidden;
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+#app-shell { display: none; }
+
+/* ---------- Sidebar ---------- */
+.sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0; width: var(--sidebar-width);
+    background-color: var(--bg-secondary); border-right: 1px solid var(--border-color);
+    z-index: 100; overflow: hidden; display: flex; flex-direction: column;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.sidebar:hover, .sidebar.pinned { width: var(--sidebar-expand); box-shadow: 10px 0 30px rgba(0,0,0,0.2); }
+.sidebar-brand { padding: 24px 20px; display: flex; align-items: center; gap: 15px; }
+.brand-icon { font-size: 26px; color: var(--accent); flex-shrink: 0; }
+.brand-text { font-family: 'Orbitron', sans-serif; font-weight: bold; font-size: 16px; opacity: 0; white-space: nowrap; transition: opacity 0.2s; letter-spacing: 1px; }
+.sidebar:hover .brand-text, .sidebar.pinned .brand-text { opacity: 1; }
+.sidebar-menu { display: flex; flex-direction: column; gap: 6px; padding: 10px; flex-grow: 1; }
+.menu-item { display: flex; align-items: center; gap: 20px; padding: 13px 14px; border-radius: 12px; color: var(--text-muted); text-decoration: none; white-space: nowrap; }
+.menu-item i { font-size: 21px; flex-shrink: 0; }
+.menu-text { opacity: 0; transition: opacity 0.2s; font-size: 14px; font-weight: 500; }
+.sidebar:hover .menu-text, .sidebar.pinned .menu-text { opacity: 1; }
+.menu-item:hover, .menu-item.active { background-color: var(--accent-glow); color: var(--accent); }
+.sidebar-footer { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.btn-theme, .btn-user-name {
+    background: none; border: none; color: var(--text-muted); font-size: 21px; cursor: pointer;
+    display: flex; align-items: center; gap: 15px; padding: 13px 14px; border-radius: 12px; white-space: nowrap;
+}
+.btn-theme:hover { background: var(--accent-glow); color: var(--accent); }
+
+/* ---------- Main ---------- */
+.main-container { margin-left: var(--sidebar-width); width: calc(100% - var(--sidebar-width)); min-height: 100vh; padding: 28px 30px 60px; }
+.main-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 26px; flex-wrap: wrap; gap: 12px; }
+.page-title { font-family: 'Orbitron', sans-serif; font-size: 21px; font-weight: 700; color: var(--text-main); }
+.page-subtitle { font-size: 13px; color: var(--text-muted); margin-top: 2px; font-family: 'Inter', sans-serif; font-weight: 400; }
+
+.app-view { display: none; }
+.app-view.active { display: block; animation: fadeIn 0.35s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+@media (max-width: 992px) { .calendar-grid { grid-auto-rows: minmax(84px, auto); } }
+@media (max-width: 768px) {
+    .sidebar { width: 0; border-right: none; }
+    .sidebar.pinned { width: var(--sidebar-expand); border-right: 1px solid var(--border-color); }
+    .main-container { margin-left: 0; width: 100%; padding: 16px 14px 50px; }
+}

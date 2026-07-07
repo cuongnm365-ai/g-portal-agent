@@ -2,19 +2,23 @@ let dashboardChart = null;
 let dashDate = new Date(); // Tháng đang xem trên Dashboard
 
 document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('btn-dash-prev').addEventListener('click', () => {
-        dashDate.setMonth(dashDate.getMonth() - 1);
-        syncDashboardData();
-    });
-    
-    document.getElementById('btn-dash-next').addEventListener('click', () => {
-        dashDate.setMonth(dashDate.getMonth() + 1);
-        syncDashboardData();
-    });
+    try {
+        document.getElementById('btn-dash-prev').addEventListener('click', () => {
+            dashDate.setMonth(dashDate.getMonth() - 1);
+            syncDashboardData();
+        });
 
-    document.getElementById('btn-dash-refresh').addEventListener('click', () => {
-        syncDashboardData();
-    });
+        document.getElementById('btn-dash-next').addEventListener('click', () => {
+            dashDate.setMonth(dashDate.getMonth() + 1);
+            syncDashboardData();
+        });
+
+        document.getElementById('btn-dash-refresh').addEventListener('click', () => {
+            syncDashboardData();
+        });
+    } catch (e) {
+        console.error('Dashboard init error:', e);
+    }
 });
 
 // Hàm gọi API tải lại dữ liệu Lịch và Năng suất theo tháng đang chọn trên Dashboard
@@ -34,11 +38,11 @@ async function syncDashboardData() {
         window.monthlyScheduleData = schData || {};
         window.monthlyProductivityData = prodData || {};
     }
-    
+
     window.updateDashboard();
 }
 
-window.updateDashboard = function() {
+window.updateDashboard = function () {
     const year = dashDate.getFullYear();
     const month = dashDate.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -50,7 +54,7 @@ window.updateDashboard = function() {
     let otDays = 0;
     let totalLateSec = 0;
     let totalEarlySec = 0;
-    
+
     const chartLabels = [];
     const chartData = [];
 
@@ -59,10 +63,10 @@ window.updateDashboard = function() {
 
     for (let day = 1; day <= daysInMonth; day++) {
         const dateKey = `${year}-${(month + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-        
+
         // Trục X của biểu đồ
         chartLabels.push(day.toString());
-        
+
         // Thống kê Lịch
         if (schData[dateKey]) {
             if (schData[dateKey].shift !== 'OFF') workDays++;
@@ -75,8 +79,8 @@ window.updateDashboard = function() {
             totalCalls += dayTotal;
             chartData.push(dayTotal);
 
-            if(prodData[dateKey].timeLate) totalLateSec += timeStrToSeconds(prodData[dateKey].timeLate);
-            if(prodData[dateKey].timeEarly) totalEarlySec += timeStrToSeconds(prodData[dateKey].timeEarly);
+            if (prodData[dateKey].timeLate) totalLateSec += timeStrToSeconds(prodData[dateKey].timeLate);
+            if (prodData[dateKey].timeEarly) totalEarlySec += timeStrToSeconds(prodData[dateKey].timeEarly);
         } else {
             chartData.push(0);
         }
@@ -108,7 +112,7 @@ window.updateDashboard = function() {
 
 function drawProductivityChart(labels, data) {
     const ctx = document.getElementById('productivity-chart');
-    if(!ctx) return;
+    if (!ctx) return;
 
     if (dashboardChart) {
         dashboardChart.destroy();

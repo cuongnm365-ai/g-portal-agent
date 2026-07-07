@@ -1,0 +1,95 @@
+/* ============================================================
+   LOGIN SCREEN — phong cách AI / HR-Tech, 2 cột
+   ============================================================ */
+.login-screen {
+    position: fixed; inset: 0; z-index: 999; display: flex;
+    background: var(--bg-primary); overflow-y: auto;
+}
+
+.login-hero {
+    flex: 1.15; position: relative; overflow: hidden; display: flex; flex-direction: column;
+    justify-content: center; padding: 60px 64px;
+    background:
+        radial-gradient(1100px 550px at -10% -10%, rgba(56,189,248,0.22), transparent 60%),
+        radial-gradient(900px 500px at 110% 110%, rgba(129,140,248,0.20), transparent 60%),
+        linear-gradient(160deg, #060a16 0%, #0b1330 55%, #0a0e1a 100%);
+    color: #eef2ff;
+    min-height: 100vh;
+}
+.login-hero::before {
+    content: ""; position: absolute; inset: 0; opacity: 0.35; pointer-events: none;
+    background-image:
+        linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+    background-size: 42px 42px;
+    mask-image: radial-gradient(circle at 30% 30%, black, transparent 75%);
+}
+.login-hero-badge {
+    display: inline-flex; align-items: center; gap: 8px; width: fit-content;
+    background: rgba(56,189,248,0.12); border: 1px solid rgba(56,189,248,0.35);
+    color: #7dd3fc; font-size: 12.5px; font-weight: 600; letter-spacing: 0.4px;
+    padding: 7px 14px; border-radius: 999px; margin-bottom: 26px; z-index: 1;
+}
+.login-hero h1 {
+    font-family: 'Orbitron', sans-serif; font-size: clamp(28px, 3.4vw, 40px); line-height: 1.25;
+    margin-bottom: 18px; z-index: 1; max-width: 560px;
+}
+.login-hero h1 span { background: linear-gradient(90deg, #38bdf8, #818cf8); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.login-hero p.lead { color: #a9b4d6; font-size: 15.5px; max-width: 480px; margin-bottom: 36px; line-height: 1.65; z-index: 1; }
+
+.login-feature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; max-width: 560px; z-index: 1; margin-bottom: 40px; }
+.login-feature {
+    display: flex; gap: 12px; align-items: flex-start; background: rgba(255,255,255,0.035);
+    border: 1px solid rgba(255,255,255,0.07); border-radius: 14px; padding: 14px 16px;
+    backdrop-filter: blur(6px);
+}
+.login-feature i { font-size: 20px; color: #38bdf8; margin-top: 2px; flex-shrink: 0; }
+.login-feature strong { display: block; font-size: 13.5px; margin-bottom: 3px; color: #f1f5f9; }
+.login-feature span { font-size: 12.5px; color: #8b96b8; line-height: 1.5; }
+
+.login-stats-preview {
+    display: flex; gap: 14px; z-index: 1; flex-wrap: wrap; max-width: 560px;
+}
+.login-stat-card {
+    flex: 1; min-width: 140px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px; padding: 16px 18px;
+}
+.login-stat-card .val { font-family: 'Orbitron', sans-serif; font-size: 22px; font-weight: 700; color: #38bdf8; }
+.login-stat-card .lbl { font-size: 11.5px; color: #8b96b8; margin-top: 4px; }
+.login-stat-card .bar { margin-top: 10px; height: 5px; border-radius: 4px; background: rgba(255,255,255,0.08); overflow: hidden; }
+.login-stat-card .bar i { display: block; height: 100%; background: linear-gradient(90deg,#38bdf8,#818cf8); border-radius: 4px; }
+
+.login-quote { margin-top: 34px; z-index: 1; max-width: 500px; }
+.login-quote p { font-size: 13.5px; color: #a9b4d6; font-style: italic; border-left: 2px solid #38bdf8; padding-left: 14px; line-height: 1.6; }
+
+/* ---------- Panel đăng nhập bên phải ---------- */
+.login-panel {
+    flex: 0.85; display: flex; align-items: center; justify-content: center; padding: 40px 32px;
+    background: var(--bg-secondary); min-height: 100vh;
+}
+.login-card { width: 100%; max-width: 380px; text-align: center; }
+.login-card .brand-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 30px; }
+.login-card .brand-row i { font-size: 30px; color: var(--accent); }
+.login-card .brand-row span { font-family: 'Orbitron', sans-serif; font-weight: 700; font-size: 19px; letter-spacing: 1px; color: var(--text-main); }
+.login-card h2 { font-size: 20px; font-weight: 700; margin-bottom: 8px; color: var(--text-main); }
+.login-card p.sub { color: var(--text-muted); font-size: 13.5px; margin-bottom: 32px; line-height: 1.5; }
+
+.btn-google-login {
+    width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px;
+    padding: 14px; border-radius: 12px; border: 1px solid var(--border-color); cursor: pointer;
+    background: #fff; color: #1f1f1f; font-weight: 600; font-size: 14.5px;
+    box-shadow: var(--shadow-soft); transition: 0.2s;
+}
+.btn-google-login:hover { filter: brightness(0.97); transform: translateY(-1px); }
+.btn-google-login img { width: 19px; height: 19px; }
+
+.login-status { margin-top: 18px; font-size: 12.5px; color: var(--text-muted); min-height: 18px; }
+.login-footnote { margin-top: 40px; font-size: 11.5px; color: var(--text-muted); line-height: 1.6; }
+.login-footnote a { color: var(--accent); text-decoration: none; }
+
+@media (max-width: 980px) {
+    .login-screen { flex-direction: column; }
+    .login-hero { min-height: auto; padding: 44px 26px 32px; }
+    .login-feature-grid { grid-template-columns: 1fr; }
+    .login-panel { min-height: auto; padding: 40px 24px 60px; }
+}

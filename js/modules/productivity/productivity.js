@@ -1,12 +1,12 @@
-window.monthlyProductivityData = {};
+window.monthlyProductivityData = window.monthlyProductivityData || {};
 
 document.addEventListener('DOMContentLoaded', () => {
-    initProductivityEvents();
+    try { initProductivityEvents(); } catch (e) { console.error('initProductivityEvents error:', e); }
 });
 
 function initProductivityEvents() {
     const dateInput = document.getElementById('prod-date');
-    
+
     // Mặc định chọn ngày hôm nay
     const today = new Date();
     const yyyy = today.getFullYear();
@@ -17,7 +17,7 @@ function initProductivityEvents() {
     // Lắng nghe sự kiện thay đổi ngày
     dateInput.addEventListener('change', loadProductivityForDate);
 
-    // Lắng nghe thay đổi dữ liệu để Tự động tính Tổng Cuộc Gọi
+    // Lắng nghe thay đổi dữ liệu để tự động tính Tổng Cuộc Gọi
     const inputs = document.querySelectorAll('.prod-input');
     inputs.forEach(input => {
         input.addEventListener('input', calculateTotal);
@@ -25,17 +25,20 @@ function initProductivityEvents() {
 
     // Nút Lưu
     document.getElementById('btn-save-prod').addEventListener('click', saveProductivity);
+
+    // Hiển thị dữ liệu mặc định ngay khi vào trang (kể cả trước khi đăng nhập Drive)
+    loadProductivityForDate();
 }
 
 // Hàm này được gọi bởi googleSync.js sau khi đăng nhập thành công
-window.loadProductivityFromDrive = async function() {
+window.loadProductivityFromDrive = async function () {
     if (!window.GPORTAL_FOLDERS) return;
     const dateInput = document.getElementById('prod-date').value;
-    if(!dateInput) return;
-    
+    if (!dateInput) return;
+
     const [year, month, _] = dateInput.split('-');
     const fileName = `productivity_${year}_${month}.json`;
-    
+
     // Tải dữ liệu năng suất của cả tháng đó về
     const data = await getJsonFromDrive(fileName, window.GPORTAL_FOLDERS.productivity);
     if (data) {
@@ -43,30 +46,30 @@ window.loadProductivityFromDrive = async function() {
     } else {
         window.monthlyProductivityData = {};
     }
-    
+
     // Hiển thị dữ liệu của ngày đang chọn
     loadProductivityForDate();
 }
 
 function loadProductivityForDate() {
     const dateKey = document.getElementById('prod-date').value; // Định dạng chuẩn YYYY-MM-DD
-    if(!dateKey) return;
+    if (!dateKey) return;
 
-    // 1. Lấy thông tin Ca và PCCV từ module Lịch làm việc (monthlyScheduleData)
-    const scheduleData = typeof monthlyScheduleData !== 'undefined' ? monthlyScheduleData : (window.monthlyScheduleData || {});
-    
+    // 1. Lấy thông tin Ca và PCCV từ module Lịch làm việc (window.monthlyScheduleData)
+    const scheduleData = window.monthlyScheduleData || {};
+
     let shiftInfo = 'OFF';
     let taskInfo = '--';
     let shiftColor = 'var(--text-muted)';
-    
+
     if (scheduleData[dateKey]) {
         const dayData = scheduleData[dateKey];
         shiftInfo = dayData.shift || 'OFF';
         taskInfo = dayData.task || '--';
-        
+
         if (shiftInfo !== 'OFF' && window.portalSettings && window.portalSettings.shifts) {
             const shiftConf = window.portalSettings.shifts.find(s => s.code === shiftInfo);
-            if(shiftConf) shiftColor = shiftConf.color;
+            if (shiftConf) shiftColor = shiftConf.color;
         }
     }
 
@@ -102,20 +105,20 @@ function calculateTotal() {
     const saTech = parseInt(document.getElementById('call-sa-tech').value) || 0;
 
     // Lấy hệ số (Mặc định là 3 nếu chưa cài đặt)
-    let coeff = 3; 
+    let coeff = 3;
     if (window.portalSettings && window.portalSettings.coefficients) {
         coeff = window.portalSettings.coefficients.saModifier || 3;
     }
 
     // CÔNG THỨC: Tổng = Inbound + Busy + HiFPT + Online + ((SA_Thông_Tin + SA_Kỹ_Thuật) * Hệ Số)
     const total = inbound + busy + hifpt + online + ((saInfo + saTech) * coeff);
-    
+
     document.getElementById('prod-total').innerText = total;
 }
 
 async function saveProductivity() {
     const dateKey = document.getElementById('prod-date').value;
-    if(!dateKey) return alert("Vui lòng chọn ngày!");
+    if (!dateKey) return alert("Vui lòng chọn ngày!");
 
     const inbound = parseInt(document.getElementById('call-inbound').value) || 0;
     const busy = parseInt(document.getElementById('call-busy').value) || 0;
@@ -136,10 +139,12 @@ async function saveProductivity() {
     if (typeof AppState !== 'undefined' && AppState.isLoggedIn && window.GPORTAL_FOLDERS) {
         const [year, month, _] = dateKey.split('-');
         const fileName = `productivity_${year}_${month}.json`;
-        
+
         await saveJsonToDrive(fileName, window.monthlyProductivityData, window.GPORTAL_FOLDERS.productivity);
         alert("Đã lưu Năng suất thành công lên Google Drive!");
     } else {
         alert("Đã lưu tạm thời tại máy. Vui lòng đăng nhập Google để đồng bộ!");
     }
+
+    if (typeof window.updateDashboard === 'function') window.updateDashboard();
 }
