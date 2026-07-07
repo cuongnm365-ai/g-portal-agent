@@ -340,9 +340,10 @@
 
     <!-- ===================== LIBRARIES & EXTERNAL SCRIPTS ===================== -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script async defer src="https://accounts.google.com/gsi/client"></script>
-    <script async defer src="https://apis.google.com/js/api.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script async defer src="https://accounts.google.com/gsi/client" onload="gsiInit()"></script>
+<script async defer src="https://apis.google.com/js/api.js" onload="gapiInit()"></script>
 
     <!-- ===================== CORE SCRIPTS (Loading order is CRITICAL) ===================== -->
     <!-- 1. App state initialization -->
