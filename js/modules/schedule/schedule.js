@@ -9,9 +9,6 @@ document.addEventListener('DOMContentLoaded', () => {
     try { initScheduleEvents(); } catch (e) { console.error('initScheduleEvents error:', e); }
 });
 
-// FIX: hàm này trước đây bị gọi nhưng KHÔNG được định nghĩa (initCalendar is not defined),
-// khiến toàn bộ initScheduleEvents() phía sau không bao giờ chạy -> nút File Mẫu,
-// Import Lịch, và các sự kiện của Modal hiệu chỉnh đều không hoạt động.
 function initCalendar() {
     renderCalendar();
 }
@@ -144,8 +141,6 @@ function openDayModal(dateKey) {
             (window.portalSettings.shifts || []).map(s => `<option value="${s.code}">${s.code} (${s.time})</option>`).join('');
         document.getElementById('modal-shift').innerHTML = shiftsHtml;
 
-        // FIX: Tăng cường (OT) giờ lấy từ danh sách "Ca tăng cường" riêng (Cài đặt),
-        // thay vì dùng chung danh sách Ca làm việc chính.
         const otHtml = `<option value="">-- Không có --</option>` +
             (window.portalSettings.otShifts || []).map(s => `<option value="${s.code}">${s.code} (${s.time})</option>`).join('');
         document.getElementById('modal-ot').innerHTML = otHtml;
@@ -167,7 +162,6 @@ function openDayModal(dateKey) {
     document.getElementById('modal-trade').value = dayData.trade || '';
     document.getElementById('modal-help').value = dayData.help || '';
 
-    // Kích hoạt sự kiện để hiện/ẩn dropdown nhân sự (đổi ca / trực hộ)
     document.getElementById('modal-shift-type').dispatchEvent(new Event('change'));
     document.getElementById('day-modal').classList.add('active');
 }
@@ -246,31 +240,63 @@ function parseDateToKey(dateStr) {
     return null;
 }
 
+/**
+ * FIX QUAN TRỌNG:
+ * 1. Trước đây gọi syncGoogleTask(key, dayData.task) - truyền 1 CHUỖI thay vì
+ *    OBJECT như hàm yêu cầu -> Google Tasks API từ chối âm thầm -> Task không
+ *    bao giờ được đẩy lên. Giờ gọi đúng theo chữ ký mới: syncGoogleTask(key, taskName, notes).
+ * 2. Bổ sung: khi PCCV bị gỡ khỏi 1 ngày (dayData.task rỗng) -> gọi deleteGoogleTask()
+ *    để xoá Task cũ tương ứng trên Google, đúng yêu cầu "nếu xóa thì cũng phải xóa".
+ * 3. Bổ sung: nếu ca chính là OFF nhưng có OT (tăng cường) thì vẫn đẩy lên Calendar
+ *    theo khung giờ của ca OT, thay vì xoá hẳn sự kiện của ngày đó.
+ */
 async function syncToGoogleEcosystem() {
     if (typeof AppState === 'undefined' || !AppState.isLoggedIn) return alert("Vui lòng đăng nhập Google trước!");
     const keys = Object.keys(window.monthlyScheduleData);
     if (keys.length === 0) return alert("Không có dữ liệu lịch để đồng bộ.");
 
-    alert("Đang tiến hành đồng bộ nền... Quá trình này có thể mất vài giây.");
+    alert("Đang tiến hành đồng bộ nền... Quá trình này có thể mất vài giây, vui lòng không tắt trình duyệt.");
+
     for (let key of keys) {
         const dayData = window.monthlyScheduleData[key];
-        if (dayData.shift === 'OFF') {
+        const hasMainShift = dayData.shift && dayData.shift !== 'OFF';
+        const hasOT = dayData.ot && dayData.ot.trim() !== '';
+
+        // ----- 1. ĐỒNG BỘ GOOGLE CALENDAR -----
+        if (!hasMainShift && !hasOT) {
+            // Ngày nghỉ hoàn toàn, không OT -> xoá sự kiện lịch nếu có
             if (typeof deleteCalendarEvent === 'function') await deleteCalendarEvent(key);
         } else {
+            let shiftLabel = hasMainShift ? dayData.shift : `OT ${dayData.ot} (OFF)`;
             let shiftTime = "08:00 - 17:00";
-            if (window.portalSettings && window.portalSettings.shifts) {
+
+            if (hasMainShift && window.portalSettings?.shifts) {
                 const conf = window.portalSettings.shifts.find(s => s.code === dayData.shift);
                 if (conf) shiftTime = conf.time;
+            } else if (!hasMainShift && hasOT && window.portalSettings?.otShifts) {
+                // Ca chính OFF nhưng có tăng cường -> lấy giờ theo ca OT
+                const conf = window.portalSettings.otShifts.find(s => s.code === dayData.ot);
+                if (conf) shiftTime = conf.time;
             }
+
             let desc = [];
             if (dayData.task) desc.push(`PCCV: ${dayData.task}`);
-            if (dayData.ot) desc.push(`OT: ${dayData.ot}`);
+            if (hasMainShift && hasOT) desc.push(`OT: ${dayData.ot}`);
             if (dayData.type === 'doica' && dayData.trade) desc.push(`Đổi ca: ${dayData.trade}`);
             if (dayData.type === 'trucho' && dayData.help) desc.push(`Trực hộ: ${dayData.help}`);
 
-            if (typeof syncCalendarEvent === 'function') await syncCalendarEvent(key, dayData.shift, shiftTime, desc.join('\n'));
+            if (typeof syncCalendarEvent === 'function') await syncCalendarEvent(key, shiftLabel, shiftTime, desc.join('\n'));
         }
-        if (dayData.task && typeof syncGoogleTask === 'function') await syncGoogleTask(key, dayData.task);
+
+        // ----- 2. ĐỒNG BỘ GOOGLE TASKS (PCCV) -----
+        if (dayData.task && dayData.task.trim() !== '') {
+            let taskNote = [];
+            if (hasMainShift) taskNote.push(`Ca: ${dayData.shift}`);
+            if (hasOT) taskNote.push(`OT: ${dayData.ot}`);
+            if (typeof syncGoogleTask === 'function') await syncGoogleTask(key, dayData.task, taskNote.join(' | '));
+        } else {
+            if (typeof deleteGoogleTask === 'function') await deleteGoogleTask(key);
+        }
     }
     alert("✅ Đã đồng bộ Lịch và Task lên Google thành công!");
 }
