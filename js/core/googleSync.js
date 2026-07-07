@@ -3,8 +3,8 @@
  * Quản lý: OAuth initialization, API discovery, Token callback
  */
 
-const CLIENT_ID = '764929266866-62ua4ratuu6jimphrullociovmcdmkq9.apps.googleusercontent.com';
-const API_KEY = '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';
+const CLIENT_ID = '7780344267458-j0ti8pkkofqer8p4m13jmkte3ln64c6h.apps.googleusercontent.com';
+const API_KEY = 'AIzaSyAsSD-DmNUjATuf8gjWlvq7LbUWaF6IHL4';
 
 const FOLDER_IDS = {
     settings: '1j5-DPSFeUSmeDYxbR7fW0zJdlf-P2efp',

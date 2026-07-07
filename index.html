@@ -20,7 +20,7 @@
         <div class="login-hero">
             <div class="login-hero-badge"><i class='bx bx-bot'></i> AI-Ready Workforce Portal</div>
             <h1>Vận hành ca làm việc & <span>năng suất cá nhân</span> theo phong cách công nghệ</h1>
-            <p class="lead">G-Portal giúp bạn quản trị lịch làm việc linh hoạt, theo dõi KPI/OKR theo thời gian thực và đồng bộ mọi thứ lên Google Calendar &amp; Tasks — tất cả trong một nơi duy nhất, bảo mật bằng chính tài khoản Google của bạn.</p>
+            <p class="lead">G-Portal giúp bạn quản trị lịch làm việc linh hoạt, theo dõi KPI/OKR theo thời gian thực và đồng bộ mọi thứ lên Google Calendar &amp; Tasks...</p>
 
             <div class="login-feature-grid">
                 <div class="login-feature">
@@ -60,7 +60,7 @@
             </div>
 
             <div class="login-quote">
-                <p>"Điều gì đo lường được thì mới cải thiện được." Portal này sinh ra để mỗi ca làm việc, mỗi cuộc gọi của bạn đều được ghi nhận đúng và đủ.</p>
+                <p>"Điều gì đo lường được thì mới cải thiện được." Portal này sinh ra để mỗi ca làm việc, mỗi cuộc gọi của bạn đều được ghi nhận và đánh giá công bằng.</p>
             </div>
         </div>
 
@@ -77,13 +77,13 @@
 
                 <p id="login-status" class="login-status"></p>
 
-                <p class="login-footnote">Bằng việc đăng nhập, bạn cho phép G-Portal đọc/ghi các file cấu hình trên Google Drive, cũng như tạo sự kiện Google Calendar &amp; Google Tasks thay bạn.</p>
+                <p class="login-footnote">Bằng việc đăng nhập, bạn cho phép G-Portal đọc/ghi các file cấu hình trên Google Drive, cũng như tạo sự kiện Google Calendar &amp; Google Tasks.</p>
             </div>
         </div>
     </div>
 
     <!-- ===================== APP SHELL (chỉ hiển thị sau khi đăng nhập) ===================== -->
-    <div id="app-shell">
+    <div id="app-shell" style="display: none;">
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-brand">
                 <i class='bx bx-bot brand-icon'></i>
@@ -190,7 +190,7 @@
                 <section id="view-productivity" class="app-view">
                     <div class="ai-card">
                         <h3><i class='bx bx-headphone'></i> Nhập Năng Suất Tổng Đài</h3>
-                        <div class="prod-header" style="display: flex; gap: 15px; align-items: center; margin-top: 15px; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid var(--border-color); flex-wrap: wrap;">
+                        <div class="prod-header" style="display: flex; gap: 15px; align-items: center; margin-top: 15px; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid var(--text-muted);">
                             <input type="date" id="prod-date" class="form-input" style="width: 200px;">
                             <div class="prod-info-tags" style="display: flex; gap: 10px; flex-wrap: wrap;">
                                 <span id="prod-shift-tag" class="tag" style="background: var(--text-muted); font-size: 12.5px; padding: 6px 12px;">Ca: --</span>
@@ -208,7 +208,7 @@
                                     <div class="input-group-col"><label>SA Thông tin</label><input type="number" id="call-sa-info" class="form-input prod-input" value="0" min="0"></div>
                                     <div class="input-group-col"><label>SA Kỹ thuật</label><input type="number" id="call-sa-tech" class="form-input prod-input" value="0" min="0"></div>
                                 </div>
-                                <div class="total-box" style="margin-top: 20px; padding: 15px; background: var(--accent-glow); border-radius: 10px; text-align: center; border: 1px solid var(--accent);">
+                                <div class="total-box" style="margin-top: 20px; padding: 15px; background: var(--accent-glow); border-radius: 10px; text-align: center; border: 1px solid var(--accent-muted);">
                                     <span style="font-size: 13px; color: var(--text-main);">Tổng Cuộc Gọi Hợp Lệ</span>
                                     <div id="prod-total" style="font-size: 34px; font-weight: bold; color: var(--accent); font-family: 'Orbitron', sans-serif;">0</div>
                                     <span id="prod-formula-hint" style="font-size: 11px; color: var(--text-muted); display:block; margin-top:4px;"></span>
@@ -218,7 +218,7 @@
                                 <h4 style="margin-bottom: 15px; color: var(--warning); font-size:14px;">Chấm công / Vi phạm</h4>
                                 <div class="input-group-col" style="margin-bottom: 15px;"><label>Đi trễ (hh:mm:ss)</label><input type="text" id="time-late" class="form-input" placeholder="00:00:00"></div>
                                 <div class="input-group-col"><label>Về sớm (hh:mm:ss)</label><input type="text" id="time-early" class="form-input" placeholder="00:00:00"></div>
-                                <div style="margin-top: 45px; text-align: right;"><button id="btn-save-prod" class="btn-primary" style="width: 100%; justify-content: center; padding: 15px; font-size: 15px;"><i class='bx bx-save'></i> Lưu Năng Suất</button></div>
+                                <div style="margin-top: 45px; text-align: right;"><button id="btn-save-prod" class="btn-primary" style="width: 100%; justify-content: center; padding: 15px; font-size: 15px;"><i class='bx bx-save'></i> Lưu Năng suất</button></div>
                             </div>
                         </div>
                     </div>
@@ -294,9 +294,9 @@
 
                             <div class="ai-card" style="margin-top: 20px;">
                                 <h3 style="font-size:15px;"><i class='bx bx-calculator'></i> Tham số KPI &amp; Công thức</h3>
-                                <div class="input-group" style="margin-bottom: 10px; margin-top:14px;"><label style="width: 190px;">Hệ số SA (Thông tin+Kỹ thuật):</label><input type="number" id="coeff-sa" value="3" min="0" step="0.5"></div>
-                                <div class="input-group" style="margin-bottom: 10px;"><label style="width: 190px;">Mục tiêu KPI / tháng:</label><input type="number" id="kpi-target" value="2000" min="0"></div>
-                                <div class="input-group"><label style="width: 190px;">Hệ số quy đổi 1 ngày OT → công:</label><input type="number" id="coeff-ot-cong" value="0.5" min="0" step="0.1"></div>
+                                <div class="input-group" style="margin-bottom: 10px; margin-top:14px;"><label style="width: 190px;">Hệ số SA (Thông tin+Kỹ thuật):</label><input type="number" id="sa-modifier" class="form-input" value="3" min="1" step="0.1"></div>
+                                <div class="input-group" style="margin-bottom: 10px;"><label style="width: 190px;">Mục tiêu KPI / tháng:</label><input type="number" id="kpi-target" class="form-input" value="2000" min="0"></div>
+                                <div class="input-group"><label style="width: 190px;">Hệ số quy đổi 1 ngày OT → công:</label><input type="number" id="coeff-ot-cong" class="form-input" value="0.5" min="0" step="0.1"></div>
                                 <div style="text-align: right; margin-top:8px;"><button id="btn-save-coeff" class="btn-primary">Lưu Tham Số</button></div>
                             </div>
                         </div>
@@ -338,14 +338,26 @@
         </div>
     </div>
 
+    <!-- ===================== LIBRARIES & EXTERNAL SCRIPTS ===================== -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script async defer src="https://accounts.google.com/gsi/client"></script>
     <script async defer src="https://apis.google.com/js/api.js"></script>
 
+    <!-- ===================== CORE SCRIPTS (Loading order is CRITICAL) ===================== -->
+    <!-- 1. App state initialization -->
     <script src="js/core/app.js"></script>
+
+    <!-- 2. Google API initialization & sync functions (MUST before auth.js) -->
+    <script src="js/core/googleSync.js"></script>
+
+    <!-- 3. Authentication flow (uses tokenClient from googleSync.js) -->
     <script src="js/core/auth.js"></script>
+
+    <!-- 4. Drive persistence (uses auth state) -->
     <script src="js/core/drive.js"></script>
+
+    <!-- ===================== MODULE SCRIPTS ===================== -->
     <script src="js/modules/settings/settings.js"></script>
     <script src="js/modules/schedule/schedule.js"></script>
     <script src="js/modules/productivity/productivity.js"></script>
