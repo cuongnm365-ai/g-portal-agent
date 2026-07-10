@@ -266,6 +266,28 @@
         </div>
     </div>
 
+    <!-- ===================== MODAL LỊCH HỌP ===================== -->
+    <div id="meeting-modal" class="modal-overlay">
+        <div class="modal-content ai-card meeting-modal-content">
+            <div class="modal-header"><h3 id="meeting-modal-title">Thêm lịch họp</h3><button class="btn-close-modal" id="btn-close-meeting-modal" type="button"><i class='bx bx-x'></i></button></div>
+            <div class="modal-body">
+                <div class="meeting-form-grid">
+                    <div class="input-group-col"><label>Ngày họp</label><input type="date" id="meeting-date" class="form-input"></div>
+                    <div class="input-group-col"><label>Bắt đầu</label><input type="time" id="meeting-start" class="form-input" value="09:00"></div>
+                    <div class="input-group-col"><label>Kết thúc</label><input type="time" id="meeting-end" class="form-input" value="10:00"></div>
+                    <div class="input-group-col"><label>Hình thức</label><select id="meeting-mode" class="form-select"><option value="offline">Offline</option><option value="online">Online</option></select></div>
+                </div>
+                <div class="input-group-col"><label>Tiêu đề</label><input type="text" id="meeting-title" class="form-input" placeholder="VD: Họp giao ban tuần"></div>
+                <div class="input-group-col"><label>Nội dung</label><textarea id="meeting-content" class="form-input" rows="4" placeholder="Nội dung / agenda cuộc họp"></textarea></div>
+                <div class="input-group-col"><label id="meeting-location-label">Địa điểm / phòng họp</label><input type="text" id="meeting-location" class="form-input" placeholder="VD: Văn phòng Q1 - Phòng họp A"></div>
+            </div>
+            <div class="modal-footer meeting-footer">
+                <button id="btn-delete-meeting" class="btn-ghost danger" type="button"><i class='bx bx-trash'></i> Xóa</button>
+                <button id="btn-save-meeting" class="btn-primary" type="button"><i class='bx bx-save'></i> Lưu lịch họp</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ===================== LIBRARIES & EXTERNAL SCRIPTS ===================== -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>

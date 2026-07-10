@@ -111,7 +111,6 @@ window.renderCalendar = function () {
 
     const firstDay = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-
     const calendarGrid = document.getElementById('calendar-grid');
     if (!calendarGrid) return;
     calendarGrid.innerHTML = '';
@@ -342,6 +341,9 @@ async function syncToGoogleEcosystem() {
             let shiftLabel = hasMainShift ? dayData.shift : `OT ${dayData.ot} (OFF)`;
             let shiftTime = "08:00 - 17:00";
 
+            if (hasMainShift && window.portalSettings && window.portalSettings.shifts) {
+                const conf = window.portalSettings.shifts.find(s => s.code === dayData.shift);
+                if (conf) shiftTime = conf.time;
             if (hasMainShift && window.portalSettings?.shifts) {
             if (hasMainShift && window.portalSettings && window.portalSettings.shifts) {
                 const conf = window.portalSettings.shifts.find(s => s.code === dayData.shift);
@@ -378,4 +380,5 @@ async function syncToGoogleEcosystem() {
         if (typeof syncMeetingCalendarEvent === 'function') await syncMeetingCalendarEvent(meeting);
     }
     alert("✅ Đã đồng bộ Lịch, Task và Lịch họp lên Google thành công!");
+}
     }

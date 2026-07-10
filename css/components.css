@@ -117,5 +117,6 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.8); cur
 .btn-ghost.danger { color: var(--danger, #ef4444); border-color: rgba(239, 68, 68, .35); }
 textarea.form-input { resize: vertical; min-height: 96px; }
 @media (max-width: 1180px) { .schedule-layout { grid-template-columns: 1fr; } .schedule-side { position: static; max-height: none; } }
+@media (max-width: 760px) { .meeting-form-grid { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .meeting-form-grid { grid-template-columns: 1fr; } }; } }
 @media (max-width: 760px) { .schedule-google-config, .meeting-form-grid { grid-template-columns: 1fr; } }

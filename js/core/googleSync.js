@@ -202,6 +202,8 @@ window.handleSignoutClick = function () {
 // PHẦN LOGIC ĐỒNG BỘ LỊCH VÀ TASKS
 // ========================================================
 
+const WORK_CALENDAR_ID = 'primary'; // TODO: thay bằng ID lịch làm việc Google Calendar nếu dùng lịch riêng.
+const MEETING_CALENDAR_ID = 'primary'; // TODO: thay bằng ID lịch họp Google Calendar nếu dùng lịch riêng.
 async function deleteCalendarEvent(dateStr) {
 const WORK_CALENDAR_ID = 'primary'; // TODO: thay bằng ID lịch làm việc Google Calendar nếu dùng lịch riêng.
 const MEETING_CALENDAR_ID = '0770c7fff204ae1af3aa25c9a88b00c17bb59c5f6f0b03dd5aa6b51fd3b567d5@group.calendar.google.com'; // TODO: thay bằng ID lịch họp Google Calendar nếu dùng lịch riêng.
@@ -215,6 +217,9 @@ async function deleteCalendarEvent(dateStr, calendarId = getConfiguredCalendarId
         const minTime = `${dateStr}T00:00:00+07:00`;
         const maxTime = `${dateStr}T23:59:59+07:00`;
         let response = await gapi.client.calendar.events.list({
+            'calendarId': calendarId,
+            'timeMin': minTime,
+            'timeMax': maxTime,
             'calendarId': 'primary',
             'calendarId': calendarId,
             'timeMin': minTime,
