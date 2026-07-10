@@ -97,6 +97,7 @@ async function saveMeetingsToDrive() {
 window.loadScheduleFromDrive = async function () {
     if (!window.GPORTAL_FOLDERS) return;
     const data = await getJsonFromDrive(getScheduleFileName(), window.GPORTAL_FOLDERS.shifts);
+    if (data) { window.monthlyScheduleData = data; renderCalendar(); }
     const meetings = await getJsonFromDrive(getMeetingsFileName(), window.GPORTAL_FOLDERS.shifts);
     window.monthlyScheduleData = data || {};
     window.monthlyMeetingsData = meetings || {};
@@ -121,6 +122,34 @@ window.renderCalendar = function () {
         const dateKey = `${year}-${(month + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
         const isToday = (day === today.getDate() && month === today.getMonth() && year === today.getFullYear());
         const dayData = window.monthlyScheduleData[dateKey] || { shift: 'OFF', type: 'chinhchu' };
+
+        let shiftColor = '#475569';
+        if (dayData.shift !== 'OFF' && window.portalSettings && Array.isArray(window.portalSettings.shifts)) {
+            const shiftConfig = window.portalSettings.shifts.find(s => s.code === dayData.shift);
+            if (shiftConfig) shiftColor = shiftConfig.color;
+        }
+
+        let tagsHtml = '';
+        if (dayData.shift !== 'OFF') {
+            tagsHtml += `<div class="shift-tag" style="background-color: ${shiftColor}"><span>Ca: ${dayData.shift}</span></div>`;
+        }
+        if (dayData.ot) {
+            let otColor = '#ea4335';
+            if (window.portalSettings && Array.isArray(window.portalSettings.otShifts)) {
+                const otConfig = window.portalSettings.otShifts.find(s => s.code === dayData.ot);
+                if (otConfig) otColor = otConfig.color;
+            }
+            tagsHtml += `<span class="ot-tag" style="background:${otColor}">OT: ${dayData.ot}</span>`;
+        }
+        if (dayData.task) tagsHtml += `<div class="task-tag"><i class='bx bx-check-square'></i> ${dayData.task}</div>`;
+
+        if (dayData.type === 'doica' && dayData.trade) tagsHtml += `<div class="trade-tag"><i class='bx bx-transfer'></i> Đổi: ${dayData.trade}</div>`;
+        if (dayData.type === 'trucho' && dayData.help) tagsHtml += `<div class="trade-tag" style="background:#10b981"><i class='bx bx-support'></i> Hộ: ${dayData.help}</div>`;
+
+        calendarGrid.innerHTML += `
+            <div class="calendar-day ${isToday ? 'today' : ''}" onclick="openDayModal('${dateKey}')">
+                <div class="day-number">${day}</div><div class="day-content">${tagsHtml}</div>
+            </div>`;
         const meetings = getMeetingsByDate(dateKey);
         const shiftConfig = getShiftConfig(dayData.shift, false);
         const otConfig = getShiftConfig(dayData.ot, true);
@@ -141,6 +170,7 @@ window.renderCalendar = function () {
     renderScheduleAgenda();
 }
 
+function openDayModal(dateKey) {
 window.openDayModal = function (dateKey) {
     editingDateKey = dateKey;
     const dayData = window.monthlyScheduleData[dateKey] || { type: 'chinhchu', shift: 'OFF', ot: '', task: '', trade: '', help: '' };
@@ -167,66 +197,7 @@ window.openDayModal = function (dateKey) {
         document.getElementById('modal-help').innerHTML = staffOptions;
     }
 
-    document.getElementById('modal-shift-type').value = dayData.type || 'chinhchu';
-    document.getElementById('modal-shift').value = dayData.shift || 'OFF';
-    document.getElementById('modal-ot').value = dayData.ot || '';
-    document.getElementById('modal-task').value = dayData.task || '';
-    document.getElementById('modal-trade').value = dayData.trade || '';
-    document.getElementById('modal-help').value = dayData.help || '';
-
-    document.getElementById('modal-shift-type').dispatchEvent(new Event('change'));
-    document.getElementById('day-modal').classList.add('active');
-}
-
-function saveDayEdit() {
-    if (!editingDateKey) return;
-    const type = document.getElementById('modal-shift-type').value;
-    const shift = document.getElementById('modal-shift').value;
-    const ot = document.getElementById('modal-ot').value;
-    const task = document.getElementById('modal-task').value;
-    let trade = ''; let help = '';
-
-    if (type === 'doica') trade = document.getElementById('modal-trade').value;
-    if (type === 'trucho') help = document.getElementById('modal-help').value;
-
-    window.monthlyScheduleData[editingDateKey] = { type, shift, ot, task, trade, help };
-
-    closeDayModal();
-    renderCalendar();
-    saveScheduleToDrive();
-}
-
-function handleExcelUpload(event) {
-    const file = event.target.files[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = function (e) {
-        try {
-            const data = new Uint8Array(e.target.result);
-            const wb = XLSX.read(data, { type: 'array' });
-            const rawJson = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-
-            rawJson.forEach(row => {
-                const dateStr = row['Ngày'] || row['Date'];
-                const shiftCode = row['Mã Ca'] || row['Ca'];
-                if (dateStr && shiftCode) {
-                    const formattedKey = parseDateToKey(dateStr);
-                    if (formattedKey) {
-                        let type = 'chinhchu'; let trade = ''; let help = '';
-                        const rawType = (row['Phân loại'] || '').toLowerCase();
-                        const person = row['Nhân sự liên quan'] || '';
-                        if (rawType.includes('đổi')) { type = 'doica'; trade = person; }
-                        else if (rawType.includes('hộ')) { type = 'trucho'; help = person; }
-
-                        window.monthlyScheduleData[formattedKey] = {
-                            type: type,
-                            shift: shiftCode,
-                            ot: row['OT'] || '',
-                            task: row['Mã PCCV'] || row['PCCV'] || '',
-                            trade: trade, help: help
-                        };
-                    }
-                }
-            });
+@@ -218,85 +230,177 @@ function handleExcelUpload(event) {
             alert("Import Lịch thành công!");
             renderCalendar(); saveScheduleToDrive();
         } catch (err) {
@@ -373,6 +344,11 @@ async function syncToGoogleEcosystem() {
             if (hasMainShift && window.portalSettings && window.portalSettings.shifts) {
                 const conf = window.portalSettings.shifts.find(s => s.code === dayData.shift);
                 if (conf) shiftTime = conf.time;
+            if (hasMainShift && window.portalSettings?.shifts) {
+            if (hasMainShift && window.portalSettings && window.portalSettings.shifts) {
+                const conf = window.portalSettings.shifts.find(s => s.code === dayData.shift);
+                if (conf) shiftTime = conf.time;
+            } else if (!hasMainShift && hasOT && window.portalSettings?.otShifts) {
             } else if (!hasMainShift && hasOT && window.portalSettings && window.portalSettings.otShifts) {
                 // Ca chính OFF nhưng có tăng cường -> lấy giờ theo ca OT
                 const conf = window.portalSettings.otShifts.find(s => s.code === dayData.ot);
@@ -398,9 +374,11 @@ async function syncToGoogleEcosystem() {
             if (typeof deleteGoogleTask === 'function') await deleteGoogleTask(key);
         }
     }
+    alert("✅ Đã đồng bộ Lịch và Task lên Google thành công!");
     const meetingItems = Object.values(window.monthlyMeetingsData || {});
     for (const meeting of meetingItems) {
         if (typeof syncMeetingCalendarEvent === 'function') await syncMeetingCalendarEvent(meeting);
     }
     alert("✅ Đã đồng bộ Lịch, Task và Lịch họp lên Google thành công!");
 }
+    }

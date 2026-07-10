@@ -177,7 +177,7 @@ window.handleAuthClick = function () {
     } else {
         let reason = 'chưa rõ nguyên nhân — hãy xem dòng chữ đỏ phía dưới nút này hoặc mở Console (F12) để xem lỗi.';
         if (!window.gapi) reason = 'thư viện apis.google.com/js/api.js chưa tải xong hoặc bị chặn.';
-        else if (!window.google || !window.google.accounts) reason = 'thư viện accounts.google.com/gsi/client chưa tải xong hoặc bị chặn.';
+         else if (!window.google || !window.google.accounts) reason = 'thư viện accounts.google.com/gsi/client chưa tải xong hoặc bị chặn.';
         else if (!gapiInited) reason = 'gapi.client chưa khởi tạo xong (xem Console F12 để biết lỗi cụ thể).';
         setLoginStatus('Chưa thể đăng nhập: ' + reason, true);
         alert("Hệ thống Google chưa sẵn sàng: " + reason);
@@ -204,6 +204,9 @@ window.handleSignoutClick = function () {
 
 const WORK_CALENDAR_ID = 'primary'; // TODO: thay bằng ID lịch làm việc Google Calendar nếu dùng lịch riêng.
 const MEETING_CALENDAR_ID = 'primary'; // TODO: thay bằng ID lịch họp Google Calendar nếu dùng lịch riêng.
+async function deleteCalendarEvent(dateStr) {
+const WORK_CALENDAR_ID = 'primary'; // TODO: thay bằng ID lịch làm việc Google Calendar nếu dùng lịch riêng.
+const MEETING_CALENDAR_ID = '0770c7fff204ae1af3aa25c9a88b00c17bb59c5f6f0b03dd5aa6b51fd3b567d5@group.calendar.google.com'; // TODO: thay bằng ID lịch họp Google Calendar nếu dùng lịch riêng.
 
 function getConfiguredCalendarId(kind) {
     return kind === 'meeting' ? MEETING_CALENDAR_ID : WORK_CALENDAR_ID;
@@ -217,6 +220,11 @@ async function deleteCalendarEvent(dateStr, calendarId = getConfiguredCalendarId
             'calendarId': calendarId,
             'timeMin': minTime,
             'timeMax': maxTime,
+            'calendarId': 'primary',
+            'calendarId': calendarId,
+            'timeMin': minTime,
+            'timeMax': maxTime,
+            'q': 'Ca:',
             'q': query,
             'singleEvents': true
         });
@@ -225,6 +233,7 @@ async function deleteCalendarEvent(dateStr, calendarId = getConfiguredCalendarId
         if (events && events.length > 0) {
             for (const ev of events) {
                 await gapi.client.calendar.events.delete({
+                    'calendarId': 'primary',
                     'calendarId': calendarId,
                     'eventId': ev.id
                 });
@@ -239,6 +248,7 @@ async function deleteCalendarEvent(dateStr, calendarId = getConfiguredCalendarId
 window.syncCalendarEvent = async function (dateStr, shiftCode, shiftTime, description) {
     if (!AppState.isLoggedIn || !gapi.client) return;
 
+    await deleteCalendarEvent(dateStr);
     const calendarId = getConfiguredCalendarId('work');
     await deleteCalendarEvent(dateStr, calendarId, '[G-Portal Work]');
 
@@ -254,6 +264,7 @@ window.syncCalendarEvent = async function (dateStr, shiftCode, shiftTime, descri
     const endDateTime = `${dateStr}T${endTimeStr}+07:00`;
 
     const event = {
+        'summary': `Ca: ${shiftCode}`,
         'summary': `[G-Portal Work] Ca: ${shiftCode}`,
         'description': description,
         'start': { 'dateTime': startDateTime, 'timeZone': 'Asia/Ho_Chi_Minh' },
@@ -262,6 +273,7 @@ window.syncCalendarEvent = async function (dateStr, shiftCode, shiftTime, descri
 
     try {
         await gapi.client.calendar.events.insert({
+            'calendarId': 'primary',
             'calendarId': calendarId,
             'resource': event
         });
@@ -326,29 +338,3 @@ window.syncGoogleTask = async function (dateKey, taskName, notes) {
                 tasklist: '@default',
                 task: existing.id,
                 resource: { ...taskBody, id: existing.id }
-            });
-        } else {
-            await gapi.client.tasks.tasks.insert({
-                tasklist: '@default',
-                resource: taskBody
-            });
-        }
-        console.log(`Đã đồng bộ Task ngày ${dateKey} thành công.`);
-    } catch (err) {
-        console.error("Lỗi đồng bộ Task: ", err);
-    }
-};
-
-// Xoá Google Task của 1 ngày (khi PCCV bị gỡ khỏi ngày đó)
-window.deleteGoogleTask = async function (dateKey) {
-    if (!AppState.isLoggedIn || !gapi.client.tasks) return;
-    try {
-        const existing = await findGoogleTaskByDate(dateKey);
-        if (existing) {
-            await gapi.client.tasks.tasks.delete({ tasklist: '@default', task: existing.id });
-            console.log(`Đã xoá Task ngày ${dateKey}.`);
-        }
-    } catch (err) {
-        console.error("Lỗi xoá Task: ", err);
-    }
-};
