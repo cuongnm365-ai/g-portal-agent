@@ -25,6 +25,7 @@
  */
 
 const AppState = { currentView: 'dashboard', theme: 'dark', isLoggedIn: false };
+window.AppState = AppState;
 
 const VIEW_META = {
     dashboard: { title: 'Dashboard', subtitle: 'Tổng quan năng suất & KPI cá nhân' },
@@ -42,7 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Nếu URL đang có hash hợp lệ (vd F5 khi đang ở #schedule) thì mở đúng view đó
     const initialView = (window.location.hash || '').replace('#', '');
     if (initialView && VIEW_META[initialView]) {
-        switchView(initialView);
+        window.switchView(initialView);
     }
 
     // Tự động khôi phục giao diện nếu đã có token trong localStorage (Sửa lỗi F5)
@@ -98,15 +99,27 @@ function initLogoutButton() {
 function initRouter() {
     const menuItems = document.querySelectorAll('.menu-item');
     menuItems.forEach(item => {
-        item.addEventListener('click', (e) => {
-            e.preventDefault();
-            const view = e.currentTarget.getAttribute('data-target');
-            if (view) switchView(view);
-        });
+        item.addEventListener('click', handleMenuClick);
+    });
+
+    // Dự phòng: nếu listener trực tiếp bị mất do render lại DOM, vẫn bắt click menu ở cấp document.
+    document.addEventListener('click', (e) => {
+        const item = e.target.closest ? e.target.closest('.menu-item') : null;
+        if (item) handleMenuClick(e);
     });
 }
 
-function switchView(viewName) {
+function handleMenuClick(e) {
+    e.preventDefault();
+    if (e.stopPropagation) e.stopPropagation();
+    const item = e.currentTarget && e.currentTarget.classList && e.currentTarget.classList.contains('menu-item')
+        ? e.currentTarget
+        : (e.target.closest ? e.target.closest('.menu-item') : null);
+    const view = item ? item.getAttribute('data-target') : '';
+    if (view) window.switchView(view);
+}
+
+window.switchView = function (viewName) {
     AppState.currentView = viewName;
     window.location.hash = viewName;
 
@@ -129,6 +142,11 @@ function switchView(viewName) {
         if (titleEl) titleEl.innerText = meta.title;
         if (subtitleEl) subtitleEl.innerText = meta.subtitle;
     }
+
+    if (viewName === 'schedule' && typeof window.renderCalendar === 'function') window.renderCalendar();
+    if (viewName === 'settings' && typeof renderSettingsUI === 'function') renderSettingsUI();
+    if (viewName === 'productivity' && typeof loadProductivityForDate === 'function') loadProductivityForDate();
+    if (viewName === 'dashboard' && typeof window.updateDashboard === 'function') window.updateDashboard();
 }
 
 // ===================== LOGIN GATE =====================
@@ -138,6 +156,8 @@ window.showApp = function () {
     const shell = document.getElementById('app-shell');
     if (login) login.style.display = 'none';
     if (shell) shell.style.display = 'block';
+    const view = (window.location.hash || '').replace('#', '') || AppState.currentView || 'dashboard';
+    if (VIEW_META[view]) window.switchView(view);
 };
 
 // Được gọi từ googleSync.js khi chưa đăng nhập / đăng xuất / phiên hết hạn

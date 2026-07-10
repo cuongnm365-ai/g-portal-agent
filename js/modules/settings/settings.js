@@ -34,7 +34,7 @@ function loadLocalSettings() {
     const saved = localStorage.getItem('gportal_settings');
     if (saved) {
         try {
-            window.portalSettings = { ...getDefaultSettings(), ...JSON.parse(saved) };
+            window.portalSettings = Object.assign({}, getDefaultSettings(), JSON.parse(saved));
         } catch (e) {
             window.portalSettings = getDefaultSettings();
         }
@@ -544,9 +544,9 @@ function renderSettingsUI() {
     const saInput = document.getElementById('sa-modifier');
     const kpiInput = document.getElementById('kpi-target');
     const otCongInput = document.getElementById('coeff-ot-cong');
-    if (saInput) saInput.value = coeff.saModifier ?? 3;
-    if (kpiInput) kpiInput.value = coeff.kpiTarget ?? 2000;
-    if (otCongInput) otCongInput.value = coeff.coeffOtCong ?? 0.5;
+    if (saInput) saInput.value = coeff.saModifier !== undefined ? coeff.saModifier : 3;
+    if (kpiInput) kpiInput.value = coeff.kpiTarget !== undefined ? coeff.kpiTarget : 2000;
+    if (otCongInput) otCongInput.value = coeff.coeffOtCong !== undefined ? coeff.coeffOtCong : 0.5;
 }
 window.renderSettingsUI = renderSettingsUI;
 
