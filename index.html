@@ -341,9 +341,14 @@
     <!-- ===================== LIBRARIES & EXTERNAL SCRIPTS ===================== -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
-    <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
-    <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+
+    <!--
+        FIX: đã bỏ thuộc tính onload="gapiLoaded()" / onload="gisLoaded()".
+        Lý do và cách thay thế (polling) xem chi tiết ở đầu file js/core/googleSync.js.
+        Vẫn giữ 2 script này async để không chặn tốc độ tải trang ban đầu.
+    -->
+    <script async src="https://apis.google.com/js/api.js"></script>
+    <script async src="https://accounts.google.com/gsi/client"></script>
 
     <script src="js/core/app.js"></script>
 
