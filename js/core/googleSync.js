@@ -203,9 +203,11 @@ window.handleSignoutClick = function () {
 // ========================================================
 
 async function deleteCalendarEvent(dateStr) {
+const WORK_CALENDAR_ID = 'primary'; // TODO: thay bằng ID lịch làm việc Google Calendar nếu dùng lịch riêng.
+const MEETING_CALENDAR_ID = '0770c7fff204ae1af3aa25c9a88b00c17bb59c5f6f0b03dd5aa6b51fd3b567d5@group.calendar.google.com'; // TODO: thay bằng ID lịch họp Google Calendar nếu dùng lịch riêng.
+
 function getConfiguredCalendarId(kind) {
-    const key = kind === 'meeting' ? 'gportal_meeting_calendar_id' : 'gportal_work_calendar_id';
-    return localStorage.getItem(key) || 'primary';
+    return kind === 'meeting' ? MEETING_CALENDAR_ID : WORK_CALENDAR_ID;
 }
 
 async function deleteCalendarEvent(dateStr, calendarId = getConfiguredCalendarId('work'), query = '[G-Portal Work]') {
