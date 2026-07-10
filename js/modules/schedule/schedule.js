@@ -1,3 +1,27 @@
+/**
+ * schedule.js - Module Lịch làm việc
+ *
+ * BẢN SỬA LỖI NGÀY 11/07 (quan trọng - lỗi khiến CẢ FILE không chạy được):
+ * - Trong file cũ có một đoạn TEXT DIFF CỦA GIT (dòng bắt đầu bằng "@@ ")
+ *   bị dán thẳng vào giữa code -> đây không phải cú pháp JavaScript hợp lệ
+ *   -> SyntaxError NGAY KHI PARSE FILE -> toàn bộ file (initCalendar,
+ *   renderCalendar, openDayModal, handleExcelUpload...) không hoạt động,
+ *   dẫn đến trang "Lịch làm việc" trống trơn / bấm gì cũng không phản ứng.
+ * - Hàm openDayModal bị khai báo trùng 2 lần (1 lần bằng "function ...",
+ *   1 lần bằng "window.openDayModal = function ...") và phần thân thực sự
+ *   bị cắt cụt giữa chừng (chưa từng đổ dữ liệu vào form / mở modal).
+ * - saveDayEdit() được nút "Lưu" gọi tới nhưng CHƯA TỪNG được định nghĩa.
+ * - handleExcelUpload() bị mất toàn bộ phần đọc & parse file Excel, chỉ
+ *   còn sót lại đoạn alert cuối cùng.
+ * - renderCalendar() có 2 khối code vẽ lịch chồng lên nhau (bản cũ dùng
+ *   các class CSS không còn tồn tại trong components.css, và bản mới dùng
+ *   đúng class hiện tại) -> khai báo trùng biến "shiftColor" -> SyntaxError,
+ *   đồng thời mỗi ngày bị vẽ lặp 2 lần nếu chạy được.
+ * Toàn bộ các lỗi trên đã được gộp lại và sửa dứt điểm, chỉ giữ lại phiên
+ * bản dùng đúng class trong components.css (shift-card, mini-pill,
+ * day-topline, meeting-chip...).
+ */
+
 window.monthlyScheduleData = window.monthlyScheduleData || {};
 window.monthlyMeetingsData = window.monthlyMeetingsData || {};
 let currentDate = new Date();
@@ -39,7 +63,7 @@ function initScheduleEvents() {
         if (e.target.id === 'day-modal') closeDayModal();
     });
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') closeDayModal();
+        if (e.key === 'Escape') { closeDayModal(); closeMeetingModal(); }
     });
 
     document.getElementById('modal-shift-type').addEventListener('change', function () {
@@ -96,13 +120,14 @@ async function saveMeetingsToDrive() {
 
 window.loadScheduleFromDrive = async function () {
     if (!window.GPORTAL_FOLDERS) return;
-    const data = await getJsonFromDrive(getScheduleFileName(), window.GPORTAL_FOLDERS.shifts);
-    if (data) { window.monthlyScheduleData = data; renderCalendar(); }
-    const meetings = await getJsonFromDrive(getMeetingsFileName(), window.GPORTAL_FOLDERS.shifts);
+    const [data, meetings] = await Promise.all([
+        getJsonFromDrive(getScheduleFileName(), window.GPORTAL_FOLDERS.shifts),
+        getJsonFromDrive(getMeetingsFileName(), window.GPORTAL_FOLDERS.shifts)
+    ]);
     window.monthlyScheduleData = data || {};
     window.monthlyMeetingsData = meetings || {};
     renderCalendar();
-}
+};
 
 window.renderCalendar = function () {
     const year = currentDate.getFullYear();
@@ -123,33 +148,6 @@ window.renderCalendar = function () {
         const isToday = (day === today.getDate() && month === today.getMonth() && year === today.getFullYear());
         const dayData = window.monthlyScheduleData[dateKey] || { shift: 'OFF', type: 'chinhchu' };
 
-        let shiftColor = '#475569';
-        if (dayData.shift !== 'OFF' && window.portalSettings && Array.isArray(window.portalSettings.shifts)) {
-            const shiftConfig = window.portalSettings.shifts.find(s => s.code === dayData.shift);
-            if (shiftConfig) shiftColor = shiftConfig.color;
-        }
-
-        let tagsHtml = '';
-        if (dayData.shift !== 'OFF') {
-            tagsHtml += `<div class="shift-tag" style="background-color: ${shiftColor}"><span>Ca: ${dayData.shift}</span></div>`;
-        }
-        if (dayData.ot) {
-            let otColor = '#ea4335';
-            if (window.portalSettings && Array.isArray(window.portalSettings.otShifts)) {
-                const otConfig = window.portalSettings.otShifts.find(s => s.code === dayData.ot);
-                if (otConfig) otColor = otConfig.color;
-            }
-            tagsHtml += `<span class="ot-tag" style="background:${otColor}">OT: ${dayData.ot}</span>`;
-        }
-        if (dayData.task) tagsHtml += `<div class="task-tag"><i class='bx bx-check-square'></i> ${dayData.task}</div>`;
-
-        if (dayData.type === 'doica' && dayData.trade) tagsHtml += `<div class="trade-tag"><i class='bx bx-transfer'></i> Đổi: ${dayData.trade}</div>`;
-        if (dayData.type === 'trucho' && dayData.help) tagsHtml += `<div class="trade-tag" style="background:#10b981"><i class='bx bx-support'></i> Hộ: ${dayData.help}</div>`;
-
-        calendarGrid.innerHTML += `
-            <div class="calendar-day ${isToday ? 'today' : ''}" onclick="openDayModal('${dateKey}')">
-                <div class="day-number">${day}</div><div class="day-content">${tagsHtml}</div>
-            </div>`;
         const meetings = getMeetingsByDate(dateKey);
         const shiftConfig = getShiftConfig(dayData.shift, false);
         const otConfig = getShiftConfig(dayData.ot, true);
@@ -168,9 +166,8 @@ window.renderCalendar = function () {
         calendarGrid.innerHTML += `<div class="calendar-day ${isToday ? 'today' : ''} ${meetings.length ? 'has-meeting' : ''}" onclick="openDayModal('${dateKey}')"><div class="day-content">${tagsHtml}</div></div>`;
     }
     renderScheduleAgenda();
-}
+};
 
-function openDayModal(dateKey) {
 window.openDayModal = function (dateKey) {
     editingDateKey = dateKey;
     const dayData = window.monthlyScheduleData[dateKey] || { type: 'chinhchu', shift: 'OFF', ot: '', task: '', trade: '', help: '' };
@@ -197,9 +194,97 @@ window.openDayModal = function (dateKey) {
         document.getElementById('modal-help').innerHTML = staffOptions;
     }
 
-@@ -218,85 +230,177 @@ function handleExcelUpload(event) {
-            alert("Import Lịch thành công!");
-            renderCalendar(); saveScheduleToDrive();
+    // Đổ dữ liệu hiện có của ngày vào form (đây là phần trước đây bị cắt cụt, thiếu hẳn)
+    document.getElementById('modal-shift-type').value = dayData.type || 'chinhchu';
+    document.getElementById('modal-shift').value = dayData.shift || 'OFF';
+    document.getElementById('modal-ot').value = dayData.ot || '';
+    document.getElementById('modal-task').value = dayData.task || '';
+    document.getElementById('modal-trade').value = dayData.trade || '';
+    document.getElementById('modal-help').value = dayData.help || '';
+
+    // Hiện/ẩn đúng khối "Đổi ca" / "Trực hộ" theo phân loại ca đang lưu
+    document.getElementById('modal-trade-group').style.display = dayData.type === 'doica' ? 'block' : 'none';
+    document.getElementById('modal-help-group').style.display = dayData.type === 'trucho' ? 'block' : 'none';
+
+    document.getElementById('day-modal').classList.add('active');
+};
+
+// FIX: hàm này trước đây được nút "Lưu" gọi tới nhưng chưa từng tồn tại trong file.
+function saveDayEdit() {
+    if (!editingDateKey) return;
+
+    const type = document.getElementById('modal-shift-type').value;
+    const shift = document.getElementById('modal-shift').value;
+    const ot = document.getElementById('modal-ot').value;
+    const task = document.getElementById('modal-task').value;
+    const trade = type === 'doica' ? document.getElementById('modal-trade').value : '';
+    const help = type === 'trucho' ? document.getElementById('modal-help').value : '';
+
+    window.monthlyScheduleData[editingDateKey] = { type, shift, ot, task, trade, help };
+
+    const savedKey = editingDateKey;
+    closeDayModal();
+    renderCalendar();
+    saveScheduleToDrive();
+
+    // Đồng bộ ngay lập tức Google Task theo PCCV vừa lưu (nếu đã đăng nhập),
+    // để không phải đợi người dùng bấm nút "Đồng bộ Google" thủ công.
+    if (typeof AppState !== 'undefined' && AppState.isLoggedIn) {
+        if (task && task.trim() !== '') {
+            let taskNote = [];
+            if (shift && shift !== 'OFF') taskNote.push(`Ca: ${shift}`);
+            if (ot) taskNote.push(`OT: ${ot}`);
+            if (typeof syncGoogleTask === 'function') syncGoogleTask(savedKey, task, taskNote.join(' | '));
+        } else if (typeof deleteGoogleTask === 'function') {
+            deleteGoogleTask(savedKey);
+        }
+    }
+}
+
+// FIX: đây là phần đọc & parse file Excel bị mất trước đây (chỉ còn sót lại đoạn
+// alert cuối cùng). Cấu trúc cột theo đúng file mẫu: Ngày, Mã Ca, OT, Mã PCCV,
+// Phân loại, Nhân sự liên quan.
+function handleExcelUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const wb = XLSX.read(data, { type: 'array' });
+            const rawJson = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+
+            let importedCount = 0;
+            rawJson.forEach(row => {
+                const rawDate = row['Ngày'] || row['Date'];
+                const shift = (row['Mã Ca'] || row['Shift'] || 'OFF').toString().trim();
+                const ot = (row['OT'] || '').toString().trim();
+                const task = (row['Mã PCCV'] || row['Task'] || '').toString().trim();
+                const typeRaw = (row['Phân loại'] || row['Type'] || 'Chính chủ').toString().trim().toLowerCase();
+                const staff = (row['Nhân sự liên quan'] || row['Staff'] || '').toString().trim();
+
+                const dateKey = parseDateToKey(rawDate);
+                if (!dateKey) return;
+
+                let type = 'chinhchu';
+                if (typeRaw.includes('đổi') || typeRaw.includes('doi')) type = 'doica';
+                else if (typeRaw.includes('trực') || typeRaw.includes('truc')) type = 'trucho';
+
+                window.monthlyScheduleData[dateKey] = {
+                    type,
+                    shift: shift || 'OFF',
+                    ot,
+                    task,
+                    trade: type === 'doica' ? staff : '',
+                    help: type === 'trucho' ? staff : ''
+                };
+                importedCount++;
+            });
+
+            alert(`Import Lịch thành công! (${importedCount} ngày)`);
+            renderCalendar();
+            saveScheduleToDrive();
         } catch (err) {
             console.error('Lỗi đọc file Excel:', err);
             alert("Không đọc được file Excel. Vui lòng dùng đúng định dạng file mẫu (.xlsx/.xls).");
@@ -223,7 +308,6 @@ function parseDateToKey(dateStr) {
     return null;
 }
 
-
 function escapeHtml(value) {
     return String(value || '').replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
 }
@@ -244,13 +328,12 @@ function renderScheduleAgenda() {
     if (!agenda || !meetingAgenda) return;
     const workItems = Object.entries(window.monthlyScheduleData || {}).filter(([, d]) => d.task || (d.shift && d.shift !== 'OFF') || d.ot).sort(([a], [b]) => a.localeCompare(b));
     document.getElementById('schedule-task-count').innerText = workItems.length;
-    agenda.innerHTML = workItems.length ? workItems.map(([date, d]) => `<button class="agenda-item" onclick="openDayModal('${date}')"><b>${date.slice(8,10)}/${date.slice(5,7)}</b><span>${escapeHtml(d.shift || 'OFF')}${d.ot ? ` · OT ${escapeHtml(d.ot)}` : ''}</span><small>${escapeHtml(d.task || 'Chưa phân công PCCV')}</small></button>`).join('') : '<div class="empty-agenda">Chưa có lịch làm việc trong tháng.</div>';
+    agenda.innerHTML = workItems.length ? workItems.map(([date, d]) => `<button class="agenda-item" onclick="openDayModal('${date}')"><b>${date.slice(8, 10)}/${date.slice(5, 7)}</b><span>${escapeHtml(d.shift || 'OFF')}${d.ot ? ` · OT ${escapeHtml(d.ot)}` : ''}</span><small>${escapeHtml(d.task || 'Chưa phân công PCCV')}</small></button>`).join('') : '<div class="empty-agenda">Chưa có lịch làm việc trong tháng.</div>';
 
     const meetings = Object.values(window.monthlyMeetingsData || {}).sort((a, b) => (`${a.date} ${a.start}`).localeCompare(`${b.date} ${b.start}`));
     document.getElementById('meeting-count').innerText = meetings.length;
-    meetingAgenda.innerHTML = meetings.length ? meetings.map(m => `<button class="agenda-item meeting" onclick="openMeetingModal('${m.id}')"><b>${m.date.slice(8,10)}/${m.date.slice(5,7)} · ${escapeHtml(m.start)}</b><span>${escapeHtml(m.title)}</span><small>${m.mode === 'online' ? 'Online' : 'Offline'} · ${escapeHtml(m.location)}</small></button>`).join('') : '<div class="empty-agenda">Chưa có lịch họp trong tháng.</div>';
+    meetingAgenda.innerHTML = meetings.length ? meetings.map(m => `<button class="agenda-item meeting" onclick="openMeetingModal('${m.id}')"><b>${m.date.slice(8, 10)}/${m.date.slice(5, 7)} · ${escapeHtml(m.start)}</b><span>${escapeHtml(m.title)}</span><small>${m.mode === 'online' ? 'Online' : 'Offline'} · ${escapeHtml(m.location)}</small></button>`).join('') : '<div class="empty-agenda">Chưa có lịch họp trong tháng.</div>';
 }
-
 
 function closeMeetingModal() {
     document.getElementById('meeting-modal').classList.remove('active');
@@ -277,7 +360,7 @@ window.openMeetingModal = function (meetingId) {
     document.getElementById('btn-delete-meeting').style.display = m ? 'inline-flex' : 'none';
     updateMeetingLocationLabel();
     document.getElementById('meeting-modal').classList.add('active');
-}
+};
 
 function saveMeetingEdit() {
     const date = document.getElementById('meeting-date').value;
@@ -311,32 +394,32 @@ function deleteMeetingEdit() {
     renderCalendar();
     saveMeetingsToDrive();
 }
+
 /**
- * FIX QUAN TRỌNG:
- * 1. Trước đây gọi syncGoogleTask(key, dayData.task) - truyền 1 CHUỖI thay vì
- *    OBJECT như hàm yêu cầu -> Google Tasks API từ chối âm thầm -> Task không
- *    bao giờ được đẩy lên. Giờ gọi đúng theo chữ ký mới: syncGoogleTask(key, taskName, notes).
- * 2. Bổ sung: khi PCCV bị gỡ khỏi 1 ngày (dayData.task rỗng) -> gọi deleteGoogleTask()
- *    để xoá Task cũ tương ứng trên Google, đúng yêu cầu "nếu xóa thì cũng phải xóa".
- * 3. Bổ sung: nếu ca chính là OFF nhưng có OT (tăng cường) thì vẫn đẩy lên Calendar
- *    theo khung giờ của ca OT, thay vì xoá hẳn sự kiện của ngày đó.
+ * Đồng bộ toàn bộ tháng đang xem lên Google Calendar + Google Tasks + Lịch họp.
+ * - Nếu ngày OFF và không OT -> xoá sự kiện Calendar nếu có.
+ * - Nếu có ca chính hoặc OT -> tạo/cập nhật sự kiện Calendar theo đúng khung giờ.
+ * - Nếu có PCCV -> tạo/cập nhật Google Task; nếu PCCV bị gỡ -> xoá Task tương ứng.
+ * - Cuối cùng đồng bộ toàn bộ lịch họp trong tháng.
  */
 async function syncToGoogleEcosystem() {
     if (typeof AppState === 'undefined' || !AppState.isLoggedIn) return alert("Vui lòng đăng nhập Google trước!");
+
     const keys = Object.keys(window.monthlyScheduleData);
-    if (keys.length === 0) return alert("Không có dữ liệu lịch để đồng bộ.");
+    const meetingItems = Object.values(window.monthlyMeetingsData || {});
+    if (keys.length === 0 && meetingItems.length === 0) return alert("Không có dữ liệu để đồng bộ.");
 
     alert("Đang tiến hành đồng bộ nền... Quá trình này có thể mất vài giây, vui lòng không tắt trình duyệt.");
 
-    for (let key of keys) {
+    for (const key of keys) {
         const dayData = window.monthlyScheduleData[key];
         const hasMainShift = dayData.shift && dayData.shift !== 'OFF';
         const hasOT = dayData.ot && dayData.ot.trim() !== '';
 
         // ----- 1. ĐỒNG BỘ GOOGLE CALENDAR -----
         if (!hasMainShift && !hasOT) {
-            // Ngày nghỉ hoàn toàn, không OT -> xoá sự kiện lịch nếu có
-            if (typeof deleteCalendarEvent === 'function') await deleteCalendarEvent(key);
+            // Ngày nghỉ hoàn toàn, không OT -> xoá sự kiện lịch nếu có từ lần đồng bộ trước
+            if (typeof window.deleteWorkCalendarEvent === 'function') await window.deleteWorkCalendarEvent(key);
         } else {
             let shiftLabel = hasMainShift ? dayData.shift : `OT ${dayData.ot} (OFF)`;
             let shiftTime = "08:00 - 17:00";
@@ -344,11 +427,6 @@ async function syncToGoogleEcosystem() {
             if (hasMainShift && window.portalSettings && window.portalSettings.shifts) {
                 const conf = window.portalSettings.shifts.find(s => s.code === dayData.shift);
                 if (conf) shiftTime = conf.time;
-            if (hasMainShift && window.portalSettings?.shifts) {
-            if (hasMainShift && window.portalSettings && window.portalSettings.shifts) {
-                const conf = window.portalSettings.shifts.find(s => s.code === dayData.shift);
-                if (conf) shiftTime = conf.time;
-            } else if (!hasMainShift && hasOT && window.portalSettings?.otShifts) {
             } else if (!hasMainShift && hasOT && window.portalSettings && window.portalSettings.otShifts) {
                 // Ca chính OFF nhưng có tăng cường -> lấy giờ theo ca OT
                 const conf = window.portalSettings.otShifts.find(s => s.code === dayData.ot);
@@ -374,11 +452,11 @@ async function syncToGoogleEcosystem() {
             if (typeof deleteGoogleTask === 'function') await deleteGoogleTask(key);
         }
     }
-    alert("✅ Đã đồng bộ Lịch và Task lên Google thành công!");
-    const meetingItems = Object.values(window.monthlyMeetingsData || {});
+
+    // ----- 3. ĐỒNG BỘ LỊCH HỌP -----
     for (const meeting of meetingItems) {
         if (typeof syncMeetingCalendarEvent === 'function') await syncMeetingCalendarEvent(meeting);
     }
+
     alert("✅ Đã đồng bộ Lịch, Task và Lịch họp lên Google thành công!");
 }
-    }
