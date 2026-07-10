@@ -77,3 +77,44 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.8); cur
 @media (max-width: 1100px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 992px) { .settings-grid { grid-template-columns: 1fr; } }
 @media (max-width: 560px) { .kpi-grid { grid-template-columns: 1fr; } .prod-grid { grid-template-columns: 1fr; } }
+/* ---------- Lịch làm việc nâng cấp + Lịch họp ---------- */
+.schedule-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; }
+.schedule-side { padding: 18px; position: sticky; top: 20px; max-height: calc(100vh - 150px); overflow-y: auto; }
+.side-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-weight: 700; color: var(--text-main); margin-bottom: 12px; }
+.side-head span { display: inline-flex; align-items: center; gap: 8px; }
+.side-head b { min-width: 28px; height: 28px; border-radius: 999px; background: var(--accent-glow); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; }
+.meeting-head { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border-color); }
+.schedule-agenda { display: flex; flex-direction: column; gap: 9px; }
+.agenda-item { width: 100%; text-align: left; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-main); border-radius: 12px; padding: 10px 12px; cursor: pointer; display: grid; gap: 4px; }
+.agenda-item:hover { border-color: var(--accent); background: var(--accent-glow); }
+.agenda-item b { color: var(--accent); font-size: 12px; }
+.agenda-item span { font-weight: 700; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agenda-item small { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agenda-item.meeting b { color: #a78bfa; }
+.empty-agenda { color: var(--text-muted); background: var(--bg-primary); border: 1px dashed var(--border-color); border-radius: 12px; padding: 14px; font-size: 12.5px; }
+.calendar-day { border-radius: 0; gap: 6px; }
+.calendar-day.today { box-shadow: inset 0 0 0 1px var(--accent); background: linear-gradient(180deg, var(--accent-glow), transparent 58%); }
+.calendar-day.has-meeting { background-image: linear-gradient(135deg, rgba(124, 58, 237, 0.10), transparent 45%); }
+.day-topline { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 5px; }
+.day-status { font-size: 9.5px; font-weight: 800; letter-spacing: .2px; padding: 2px 7px; border-radius: 999px; }
+.day-status.has-shift { background: rgba(16, 185, 129, .16); color: #34d399; }
+.day-status.is-off { background: rgba(148, 163, 184, .12); color: var(--text-muted); }
+.shift-card { border-left: 4px solid var(--shift-color); background: rgba(56, 189, 248, .10); border-radius: 9px; padding: 7px 8px; display: grid; gap: 2px; }
+.shift-card b { color: #fff; font-size: 13px; }
+:root[data-theme="light"] .shift-card b { color: var(--text-main); }
+.shift-card span { color: var(--text-muted); font-size: 10.5px; }
+.mini-pill, .meeting-chip, .more-chip { border: 0; width: 100%; border-radius: 8px; padding: 4px 7px; font-size: 10.5px; display: inline-flex; align-items: center; gap: 5px; color: var(--text-main); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mini-pill.task { background: rgba(56, 189, 248, .12); border: 1px dashed rgba(56, 189, 248, .35); color: var(--accent); }
+.mini-pill.ot { background: rgba(239, 68, 68, .16); color: #fca5a5; }
+.mini-pill.trade { background: rgba(245, 158, 11, .16); color: #fbbf24; }
+.mini-pill.help { background: rgba(16, 185, 129, .16); color: #34d399; }
+.meeting-chip { cursor: pointer; background: rgba(124, 58, 237, .18); color: #c4b5fd; text-align: left; }
+.meeting-chip:hover { filter: brightness(1.15); }
+.more-chip { justify-content: center; color: var(--text-muted); background: var(--bg-primary); }
+.meeting-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.meeting-modal-content { max-width: 560px; }
+.meeting-footer { margin-top: 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.btn-ghost.danger { color: var(--danger, #ef4444); border-color: rgba(239, 68, 68, .35); }
+textarea.form-input { resize: vertical; min-height: 96px; }
+@media (max-width: 1180px) { .schedule-layout { grid-template-columns: 1fr; } .schedule-side { position: static; max-height: none; } }
+@media (max-width: 760px) { .meeting-form-grid { grid-template-columns: 1fr; } }

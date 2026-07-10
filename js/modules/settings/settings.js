@@ -12,6 +12,21 @@
  * - Đã bổ sung đầy đủ hàm renderSettingsUI() ở cuối file.
  */
 
+
+function getEl(id) {
+    return document.getElementById(id);
+}
+
+function bindIfExists(id, eventName, handler) {
+    const el = getEl(id);
+    if (el) el.addEventListener(eventName, handler);
+}
+
+function getInputValue(id) {
+    const el = getEl(id);
+    return el && typeof el.value === 'string' ? el.value.trim() : '';
+}
+
 // ==================== CƠ CHẾ LOAD DATA & RENDER ĐẦU TIÊN ====================
 
 function loadLocalSettings() {
@@ -19,7 +34,7 @@ function loadLocalSettings() {
     const saved = localStorage.getItem('gportal_settings');
     if (saved) {
         try {
-            window.portalSettings = { ...getDefaultSettings(), ...JSON.parse(saved) };
+            window.portalSettings = Object.assign({}, getDefaultSettings(), JSON.parse(saved));
         } catch (e) {
             window.portalSettings = getDefaultSettings();
         }
@@ -46,27 +61,27 @@ document.addEventListener('DOMContentLoaded', () => {
  */
 function initSettingsEvents() {
     // === CA LÀM VIỆC ===
-    document.getElementById('btn-add-shift')?.addEventListener('click', addShift);
-    document.getElementById('btn-tpl-shift')?.addEventListener('click', downloadShiftTemplate);
-    document.getElementById('import-shift')?.addEventListener('change', importShiftFromExcel);
+    bindIfExists('btn-add-shift', 'click', addShift);
+    bindIfExists('btn-tpl-shift', 'click', downloadShiftTemplate);
+    bindIfExists('import-shift', 'change', importShiftFromExcel);
 
     // === CA TĂNG CƯỜNG (OT) ===
-    document.getElementById('btn-add-otshift')?.addEventListener('click', addOTShift);
-    document.getElementById('btn-tpl-otshift')?.addEventListener('click', downloadOTShiftTemplate);
-    document.getElementById('import-otshift')?.addEventListener('change', importOTShiftFromExcel);
+    bindIfExists('btn-add-otshift', 'click', addOTShift);
+    bindIfExists('btn-tpl-otshift', 'click', downloadOTShiftTemplate);
+    bindIfExists('import-otshift', 'change', importOTShiftFromExcel);
 
     // === PHÂN CÔNG CÔNG VIỆC (PCCV) ===
-    document.getElementById('btn-add-task')?.addEventListener('click', addTask);
-    document.getElementById('btn-tpl-task')?.addEventListener('click', downloadTaskTemplate);
-    document.getElementById('import-task')?.addEventListener('change', importTaskFromExcel);
+    bindIfExists('btn-add-task', 'click', addTask);
+    bindIfExists('btn-tpl-task', 'click', downloadTaskTemplate);
+    bindIfExists('import-task', 'change', importTaskFromExcel);
 
     // === NHÂN SỰ ===
-    document.getElementById('btn-add-staff')?.addEventListener('click', addStaff);
-    document.getElementById('btn-tpl-staff')?.addEventListener('click', downloadStaffTemplate);
-    document.getElementById('import-staff')?.addEventListener('change', importStaffFromExcel);
+    bindIfExists('btn-add-staff', 'click', addStaff);
+    bindIfExists('btn-tpl-staff', 'click', downloadStaffTemplate);
+    bindIfExists('import-staff', 'change', importStaffFromExcel);
 
     // === THAM SỐ KPI ===
-    document.getElementById('btn-save-coeff')?.addEventListener('click', saveCoefficients);
+    bindIfExists('btn-save-coeff', 'click', saveCoefficients);
 
     // Lưu ý: Tự động tải từ Drive đã được xử lý bên auth.js / googleSync.js
     // khi đăng nhập thành công, nên không gọi lại ở đây để tránh đụng độ.
@@ -75,9 +90,9 @@ function initSettingsEvents() {
 // ==================== CA LÀM VIỆC ====================
 
 function addShift() {
-    const code = document.getElementById('shift-code')?.value.trim();
-    const name = document.getElementById('shift-name')?.value.trim() || '';
-    const time = document.getElementById('shift-time')?.value.trim();
+    const code = getInputValue('shift-code');
+    const name = getInputValue('shift-name');
+    const time = getInputValue('shift-time');
 
     if (!code || !time) {
         alert('Vui lòng nhập Mã Ca và Thời gian!');
@@ -165,9 +180,9 @@ function importShiftFromExcel(event) {
 // ==================== CA TĂNG CƯỜNG (OT) ====================
 
 function addOTShift() {
-    const code = document.getElementById('otshift-code')?.value.trim();
-    const name = document.getElementById('otshift-name')?.value.trim() || '';
-    const time = document.getElementById('otshift-time')?.value.trim();
+    const code = getInputValue('otshift-code');
+    const name = getInputValue('otshift-name');
+    const time = getInputValue('otshift-time');
 
     if (!code || !time) {
         alert('Vui lòng nhập Mã ca và Thời gian!');
@@ -249,8 +264,8 @@ function importOTShiftFromExcel(event) {
 // ==================== PHÂN CÔNG CÔNG VIỆC (PCCV) ====================
 
 function addTask() {
-    const code = document.getElementById('task-code')?.value.trim();
-    const name = document.getElementById('task-name')?.value.trim();
+    const code = getInputValue('task-code');
+    const name = getInputValue('task-name');
 
     if (!code || !name) {
         alert('Vui lòng nhập Mã và Tên PCCV!');
@@ -328,8 +343,8 @@ function importTaskFromExcel(event) {
 // ==================== NHÂN SỰ ====================
 
 function addStaff() {
-    const id = document.getElementById('staff-id')?.value.trim();
-    const name = document.getElementById('staff-name')?.value.trim();
+    const id = getInputValue('staff-id');
+    const name = getInputValue('staff-name');
 
     if (!id || !name) {
         alert('Vui lòng nhập Mã NV và Họ tên!');
@@ -409,9 +424,9 @@ async function saveCoefficients() {
     if (!window.portalSettings) window.portalSettings = getDefaultSettings();
     if (!window.portalSettings.coefficients) window.portalSettings.coefficients = {};
 
-    const saModifier = parseFloat(document.getElementById('sa-modifier')?.value) || 3;
-    const kpiTarget = parseInt(document.getElementById('kpi-target')?.value) || 2000;
-    const coeffOtCong = parseFloat(document.getElementById('coeff-ot-cong')?.value) || 0.5;
+    const saModifier = parseFloat(getInputValue('sa-modifier')) || 3;
+    const kpiTarget = parseInt(getInputValue('kpi-target')) || 2000;
+    const coeffOtCong = parseFloat(getInputValue('coeff-ot-cong')) || 0.5;
 
     window.portalSettings.coefficients = {
         saModifier,
@@ -529,9 +544,9 @@ function renderSettingsUI() {
     const saInput = document.getElementById('sa-modifier');
     const kpiInput = document.getElementById('kpi-target');
     const otCongInput = document.getElementById('coeff-ot-cong');
-    if (saInput) saInput.value = coeff.saModifier ?? 3;
-    if (kpiInput) kpiInput.value = coeff.kpiTarget ?? 2000;
-    if (otCongInput) otCongInput.value = coeff.coeffOtCong ?? 0.5;
+    if (saInput) saInput.value = coeff.saModifier !== undefined ? coeff.saModifier : 3;
+    if (kpiInput) kpiInput.value = coeff.kpiTarget !== undefined ? coeff.kpiTarget : 2000;
+    if (otCongInput) otCongInput.value = coeff.coeffOtCong !== undefined ? coeff.coeffOtCong : 0.5;
 }
 window.renderSettingsUI = renderSettingsUI;
 

@@ -202,15 +202,22 @@ window.handleSignoutClick = function () {
 // PHẦN LOGIC ĐỒNG BỘ LỊCH VÀ TASKS
 // ========================================================
 
-async function deleteCalendarEvent(dateStr) {
+const WORK_CALENDAR_ID = 'primary'; // TODO: thay bằng ID lịch làm việc Google Calendar nếu dùng lịch riêng.
+const MEETING_CALENDAR_ID = 'primary'; // TODO: thay bằng ID lịch họp Google Calendar nếu dùng lịch riêng.
+
+function getConfiguredCalendarId(kind) {
+    return kind === 'meeting' ? MEETING_CALENDAR_ID : WORK_CALENDAR_ID;
+}
+
+async function deleteCalendarEvent(dateStr, calendarId = getConfiguredCalendarId('work'), query = '[G-Portal Work]') {
     try {
         const minTime = `${dateStr}T00:00:00+07:00`;
         const maxTime = `${dateStr}T23:59:59+07:00`;
         let response = await gapi.client.calendar.events.list({
-            'calendarId': 'primary',
+            'calendarId': calendarId,
             'timeMin': minTime,
             'timeMax': maxTime,
-            'q': 'Ca:',
+            'q': query,
             'singleEvents': true
         });
 
@@ -218,7 +225,7 @@ async function deleteCalendarEvent(dateStr) {
         if (events && events.length > 0) {
             for (const ev of events) {
                 await gapi.client.calendar.events.delete({
-                    'calendarId': 'primary',
+                    'calendarId': calendarId,
                     'eventId': ev.id
                 });
             }
@@ -232,7 +239,8 @@ async function deleteCalendarEvent(dateStr) {
 window.syncCalendarEvent = async function (dateStr, shiftCode, shiftTime, description) {
     if (!AppState.isLoggedIn || !gapi.client) return;
 
-    await deleteCalendarEvent(dateStr);
+    const calendarId = getConfiguredCalendarId('work');
+    await deleteCalendarEvent(dateStr, calendarId, '[G-Portal Work]');
 
     let startTimeStr = "08:00:00";
     let endTimeStr = "17:00:00";
@@ -246,7 +254,7 @@ window.syncCalendarEvent = async function (dateStr, shiftCode, shiftTime, descri
     const endDateTime = `${dateStr}T${endTimeStr}+07:00`;
 
     const event = {
-        'summary': `Ca: ${shiftCode}`,
+        'summary': `[G-Portal Work] Ca: ${shiftCode}`,
         'description': description,
         'start': { 'dateTime': startDateTime, 'timeZone': 'Asia/Ho_Chi_Minh' },
         'end': { 'dateTime': endDateTime, 'timeZone': 'Asia/Ho_Chi_Minh' }
@@ -254,12 +262,42 @@ window.syncCalendarEvent = async function (dateStr, shiftCode, shiftTime, descri
 
     try {
         await gapi.client.calendar.events.insert({
-            'calendarId': 'primary',
+            'calendarId': calendarId,
             'resource': event
         });
         console.log(`Đã đồng bộ Lịch ngày ${dateStr} thành công.`);
     } catch (err) {
         console.error("Lỗi đồng bộ Lịch: ", err);
+    }
+};
+
+
+window.deleteMeetingCalendarEvent = async function (meeting) {
+    if (!AppState.isLoggedIn || !gapi.client || !meeting) return;
+    await deleteCalendarEvent(meeting.date, getConfiguredCalendarId('meeting'), `[G-Portal Meeting] ${meeting.id}`);
+};
+
+window.syncMeetingCalendarEvent = async function (meeting) {
+    if (!AppState.isLoggedIn || !gapi.client || !meeting) return;
+    const calendarId = getConfiguredCalendarId('meeting');
+    await deleteCalendarEvent(meeting.date, calendarId, `[G-Portal Meeting] ${meeting.id}`);
+
+    const startDateTime = `${meeting.date}T${meeting.start || '09:00'}:00+07:00`;
+    const endDateTime = `${meeting.date}T${meeting.end || '10:00'}:00+07:00`;
+    const isOnline = meeting.mode === 'online';
+    const event = {
+        summary: `[G-Portal Meeting] ${meeting.id} ${meeting.title}`,
+        description: [meeting.content, isOnline ? `Link họp: ${meeting.location || ''}` : `Địa điểm: ${meeting.location || ''}`].filter(Boolean).join('\n'),
+        location: meeting.location || '',
+        start: { dateTime: startDateTime, timeZone: 'Asia/Ho_Chi_Minh' },
+        end: { dateTime: endDateTime, timeZone: 'Asia/Ho_Chi_Minh' }
+    };
+
+    try {
+        await gapi.client.calendar.events.insert({ calendarId, resource: event });
+        console.log(`Đã đồng bộ lịch họp ${meeting.id}.`);
+    } catch (err) {
+        console.error('Lỗi đồng bộ lịch họp:', err);
     }
 };
 

@@ -124,7 +124,7 @@ window.updateDashboard = function () {
     let coeffOtCong = 0.5;
     if (window.portalSettings && window.portalSettings.coefficients) {
         target = window.portalSettings.coefficients.kpiTarget || 2000;
-        coeffOtCong = (window.portalSettings.coefficients.coeffOtCong ?? 0.5);
+        coeffOtCong = window.portalSettings.coefficients.coeffOtCong !== undefined ? window.portalSettings.coefficients.coeffOtCong : 0.5;
     }
 
     // 1. Render KPI Tháng
@@ -170,7 +170,7 @@ function setWidth(id, width) {
 
 function drawProductivityChart(labels, data) {
     const ctx = document.getElementById('productivity-chart');
-    if (!ctx) return;
+    if (!ctx || typeof Chart === 'undefined') return;
 
     if (dashboardChart) {
         dashboardChart.destroy();
