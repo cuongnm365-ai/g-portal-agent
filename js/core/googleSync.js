@@ -1,372 +1,462 @@
 /**
- * googleSync.js - Google Auth + Drive + Calendar + Tasks
- *
- * BẢN SỬA LỖI ĐĂNG NHẬP (quan trọng):
- * -------------------------------------------------------------------------
- * TRƯỚC ĐÂY: dùng onload="gapiLoaded()" / onload="gisLoaded()" ngay trên thẻ
- * <script async defer ...> trong index.html. Vì các script này có "async",
- * trình duyệt tải chúng song song không theo thứ tự cố định. Thư viện
- * "gsi/client" rất nhẹ nên gần như luôn tải xong TRƯỚC KHI file này
- * (googleSync.js - nơi định nghĩa gapiLoaded/gisLoaded) được tải và chạy
- * xong. Khi đó onload gọi một hàm CHƯA TỒN TẠI -> lỗi bị nuốt âm thầm ->
- * gapiInited/gisInited không bao giờ cùng true -> tokenClient luôn
- * undefined -> bấm "Đăng nhập với Google" luôn rơi vào alert cảnh báo
- * "Hệ thống Google đang được kết nối...".
- *
- * CÁCH SỬA: bỏ hẳn onload trên thẻ <script> (xem index.html), thay bằng
- * vòng lặp kiểm tra (polling) window.gapi / window.google.accounts đã sẵn
- * sàng hay chưa. Cách này không phụ thuộc thứ tự tải file nên luôn chạy
- * đúng, kể cả khi mạng chậm/nhanh thất thường.
+ * schedule.js - Module Lịch làm việc
  *
  * BẢN SỬA LỖI NGÀY 11/07 (quan trọng - lỗi khiến CẢ FILE không chạy được):
- * - WORK_CALENDAR_ID / MEETING_CALENDAR_ID trước đó bị khai báo `const` 2
- *   LẦN trong cùng 1 file -> trình duyệt báo "Identifier has already been
- *   declared" (SyntaxError) NGAY KHI PARSE FILE -> toàn bộ file này (kể cả
- *   handleAuthClick, syncCalendarEvent...) coi như KHÔNG TỒN TẠI -> nút
- *   Đăng nhập Google và mọi tính năng đồng bộ đều chết cứng.
- * - Hàm deleteCalendarEvent cũng bị khai báo trùng 2 lần (2 chữ ký khác
- *   nhau) -> lỗi tương tự.
- * - Object gửi lên Calendar API bị lặp nhiều key giống nhau (calendarId,
- *   summary...) trong cùng 1 object literal.
- * - File bị cắt cụt giữa hàm syncGoogleTask (thiếu nhánh tạo Task mới) và
- *   thiếu hẳn hàm deleteGoogleTask dù schedule.js có gọi tới.
- * Toàn bộ các lỗi trên đã được gộp lại và sửa dứt điểm trong file này.
- * -------------------------------------------------------------------------
+ * - Trong file cũ có một đoạn TEXT DIFF CỦA GIT (dòng bắt đầu bằng "@@ ")
+ *   bị dán thẳng vào giữa code -> đây không phải cú pháp JavaScript hợp lệ
+ *   -> SyntaxError NGAY KHI PARSE FILE -> toàn bộ file (initCalendar,
+ *   renderCalendar, openDayModal, handleExcelUpload...) không hoạt động,
+ *   dẫn đến trang "Lịch làm việc" trống trơn / bấm gì cũng không phản ứng.
+ * - Hàm openDayModal bị khai báo trùng 2 lần (1 lần bằng "function ...",
+ *   1 lần bằng "window.openDayModal = function ...") và phần thân thực sự
+ *   bị cắt cụt giữa chừng (chưa từng đổ dữ liệu vào form / mở modal).
+ * - saveDayEdit() được nút "Lưu" gọi tới nhưng CHƯA TỪNG được định nghĩa.
+ * - handleExcelUpload() bị mất toàn bộ phần đọc & parse file Excel, chỉ
+ *   còn sót lại đoạn alert cuối cùng.
+ * - renderCalendar() có 2 khối code vẽ lịch chồng lên nhau (bản cũ dùng
+ *   các class CSS không còn tồn tại trong components.css, và bản mới dùng
+ *   đúng class hiện tại) -> khai báo trùng biến "shiftColor" -> SyntaxError,
+ *   đồng thời mỗi ngày bị vẽ lặp 2 lần nếu chạy được.
+ * Toàn bộ các lỗi trên đã được gộp lại và sửa dứt điểm, chỉ giữ lại phiên
+ * bản dùng đúng class trong components.css (shift-card, mini-pill,
+ * day-topline, meeting-chip...).
  */
 
-const CLIENT_ID = '764929266866-62ua4ratuu6jimphrullociovmcdmkq9.apps.googleusercontent.com';
-const API_KEY = 'AIzaSyChHKJeaAnGQ5cVoSeqQQ8R-BgPK2DLv2Y';
-const FOLDER_IDS = {
-    settings: '1j5-DPSFeUSmeDYxbR7fW0zJdlf-P2efp',
-    staffs: '1eNvquq7MhTfTDn1vwm7D7mEpORkTe5kQ',
-    productivity: '19BLiBpgwKnDlbqgHtRPJFXs_jz3EMOXn',
-    shifts: '1I28OyoCO6jmPyS_50EnwHvyS8opFbkl2',
-    tasks: '1xOntuC0tf4F5kn8-QmzFRpTYR4Y4ebzO'
-};
-window.GPORTAL_FOLDERS = FOLDER_IDS;
-const DISCOVERY_DOCS = [
-    'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest',
-    'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest',
-    'https://tasks.googleapis.com/$discovery/rest?version=v1'
-];
+window.monthlyScheduleData = window.monthlyScheduleData || {};
+window.monthlyMeetingsData = window.monthlyMeetingsData || {};
+let currentDate = new Date();
+let editingDateKey = null;
+let editingMeetingId = null;
 
-const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks';
+document.addEventListener('DOMContentLoaded', () => {
+    // Mỗi bước bọc try/catch riêng: nếu 1 bước lỗi, các bước còn lại (đặc biệt là
+    // gắn sự kiện cho nút File Mẫu / Import / Đóng modal) vẫn được thực thi bình thường.
+    try { initCalendar(); } catch (e) { console.error('initCalendar error:', e); }
+    try { initScheduleEvents(); } catch (e) { console.error('initScheduleEvents error:', e); }
+});
 
-let tokenClient;
-let gapiInited = false;
-let gisInited = false;
-let gapiLoadRequested = false; // tránh gọi gapi.load() nhiều lần trong lúc polling
-const GSYNC_START_TIME = Date.now();
-
-// Cập nhật dòng trạng thái dưới nút "Đăng nhập với Google" để người dùng thấy
-// tiến trình mà KHÔNG cần mở Console (F12) mới xem được lỗi.
-function setLoginStatus(text, isError) {
-    const el = document.getElementById('login-status');
-    if (el) {
-        el.innerText = text;
-        el.style.color = isError ? 'var(--danger, #ef4444)' : '';
-    }
-    if (isError) console.error('[G-Portal Auth]', text);
-    else console.log('[G-Portal Auth]', text);
+function initCalendar() {
+    renderCalendar();
 }
 
-// ============================================================
-// 0. POLLING: chờ 2 thư viện gapi + Google Identity Services sẵn sàng
-// ============================================================
-function waitForGoogleLibraries() {
-    if (!gapiInited && window.gapi && !gapiLoadRequested) {
-        gapiLoadRequested = true;
-        setLoginStatus('Đang khởi tạo Google API Client...');
-        gapi.load('client', {
-            callback: initializeGapiClient,
-            onerror: function () {
-                setLoginStatus('Lỗi: không tải được "gapi client". Có thể do AdBlock/tiện ích trình duyệt chặn apis.google.com — vui lòng tắt thử rồi tải lại trang.', true);
-                gapiLoadRequested = false; // cho phép thử lại
-            },
-            timeout: 10000,
-            ontimeout: function () {
-                setLoginStatus('Lỗi: tải "gapi client" quá thời gian chờ (mạng chậm hoặc bị chặn).', true);
-                gapiLoadRequested = false;
-            }
-        });
-    }
-    if (!gisInited && window.google && window.google.accounts && window.google.accounts.oauth2) {
-        gisInited = true;
-        checkAllReady();
-    }
+function initScheduleEvents() {
+    document.getElementById('btn-prev-month').addEventListener('click', () => { currentDate.setMonth(currentDate.getMonth() - 1); changeMonthHandler(); });
+    document.getElementById('btn-next-month').addEventListener('click', () => { currentDate.setMonth(currentDate.getMonth() + 1); changeMonthHandler(); });
 
-    const elapsed = Date.now() - GSYNC_START_TIME;
-    if (!gapiInited || !gisInited) {
-        // Sau 8 giây vẫn chưa xong -> báo rõ đang kẹt ở thư viện nào để dễ xử lý
-        if (elapsed > 8000 && elapsed < 8500) {
-            if (!window.gapi) {
-                setLoginStatus('Không thể tải thư viện "apis.google.com/js/api.js". Kiểm tra kết nối mạng, AdBlock, hoặc thử mở trang qua http(s):// thay vì mở trực tiếp file trên máy.', true);
-            } else if (!window.google || !window.google.accounts) {
-                setLoginStatus('Không thể tải thư viện "accounts.google.com/gsi/client". Kiểm tra kết nối mạng hoặc trình chặn quảng cáo.', true);
-            } else if (!gapiInited) {
-                setLoginStatus('gapi đã tải nhưng gapi.client chưa khởi tạo xong. Kiểm tra Console (F12) để xem lỗi chi tiết.', true);
-            }
-        }
-        setTimeout(waitForGoogleLibraries, 150);
-    } else {
-        setLoginStatus('');
-    }
-}
-waitForGoogleLibraries();
+    // Download Lịch Mẫu
+    document.getElementById('btn-download-schedule-tpl').addEventListener('click', () => {
+        const ws_data = [["Ngày", "Mã Ca", "OT", "Mã PCCV", "Phân loại", "Nhân sự liên quan"]];
+        ws_data.push(["01/07/2026", "S1", "S+", "CHAT", "Chính chủ", ""]);
+        ws_data.push(["02/07/2026", "S2", "", "", "Đổi ca", "NV01"]);
 
-// Khởi tạo GAPI Client
-async function initializeGapiClient() {
-    try {
-        await gapi.client.init({
-            apiKey: API_KEY,
-            discoveryDocs: DISCOVERY_DOCS,
-        });
-        gapiInited = true;
-        checkAllReady();
-    } catch (e) {
-        console.error("Lỗi khởi tạo GAPI:", e);
-        setLoginStatus('Lỗi khởi tạo gapi.client.init(): ' + (e && e.message ? e.message : JSON.stringify(e)) + ' — kiểm tra API_KEY / DISCOVERY_DOCS.', true);
-        gapiLoadRequested = false; // cho phép thử lại ở vòng polling kế tiếp nếu lỗi
-    }
-}
-
-// Chỉ khởi tạo Auth khi CẢ 2 thư viện đã sẵn sàng
-function checkAllReady() {
-    if (gapiInited && gisInited) {
-        initGoogleAuth();
-    }
-}
-
-// Khởi tạo xác thực Google (tự động đăng nhập lại khi F5 nếu đã có token)
-function initGoogleAuth() {
-    tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: CLIENT_ID,
-        scope: SCOPES,
-        callback: (tokenResponse) => {
-            if (tokenResponse && tokenResponse.access_token) {
-                localStorage.setItem('gapi_token', JSON.stringify(tokenResponse));
-                if (gapi.client) gapi.client.setToken(tokenResponse);
-
-                AppState.isLoggedIn = true;
-                if (typeof window.showApp === 'function') window.showApp();
-
-                loadAllDataFromDrive();
-            }
-        },
+        const ws = XLSX.utils.aoa_to_sheet(ws_data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "LichLamViec");
+        XLSX.writeFile(wb, "Mau_LichLamViec.xlsx");
     });
 
-    // Khôi phục phiên đăng nhập cũ (nếu có) ngay khi tokenClient đã sẵn sàng
-    const savedTokenStr = localStorage.getItem('gapi_token');
-    if (savedTokenStr) {
+    document.getElementById('excel-upload').addEventListener('change', handleExcelUpload);
+
+    // Modal Events
+    document.getElementById('btn-close-modal').addEventListener('click', closeDayModal);
+    document.getElementById('day-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'day-modal') closeDayModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { closeDayModal(); closeMeetingModal(); }
+    });
+
+    document.getElementById('modal-shift-type').addEventListener('change', function () {
+        const val = this.value;
+        document.getElementById('modal-trade-group').style.display = val === 'doica' ? 'block' : 'none';
+        document.getElementById('modal-help-group').style.display = val === 'trucho' ? 'block' : 'none';
+    });
+
+    document.getElementById('btn-save-day').addEventListener('click', saveDayEdit);
+    document.getElementById('btn-sync-calendar').addEventListener('click', syncToGoogleEcosystem);
+    document.getElementById('btn-add-meeting').addEventListener('click', () => openMeetingModal());
+    document.getElementById('btn-close-meeting-modal').addEventListener('click', closeMeetingModal);
+    document.getElementById('meeting-modal').addEventListener('click', (e) => { if (e.target.id === 'meeting-modal') closeMeetingModal(); });
+    document.getElementById('btn-save-meeting').addEventListener('click', saveMeetingEdit);
+    document.getElementById('btn-delete-meeting').addEventListener('click', deleteMeetingEdit);
+    document.getElementById('meeting-mode').addEventListener('change', updateMeetingLocationLabel);
+}
+
+function closeDayModal() {
+    document.getElementById('day-modal').classList.remove('active');
+    editingDateKey = null;
+}
+
+function changeMonthHandler() {
+    window.monthlyScheduleData = {};
+    window.monthlyMeetingsData = {};
+    renderCalendar();
+    if (typeof AppState !== 'undefined' && AppState.isLoggedIn) loadScheduleFromDrive();
+}
+
+function getScheduleFileName() {
+    const year = currentDate.getFullYear();
+    const month = (currentDate.getMonth() + 1).toString().padStart(2, '0');
+    return `schedule_${year}_${month}.json`;
+}
+
+function getMeetingsFileName() {
+    const year = currentDate.getFullYear();
+    const month = (currentDate.getMonth() + 1).toString().padStart(2, '0');
+    return `meetings_${year}_${month}.json`;
+}
+
+async function saveScheduleToDrive() {
+    if (typeof AppState !== 'undefined' && AppState.isLoggedIn && window.GPORTAL_FOLDERS) {
+        await saveJsonToDrive(getScheduleFileName(), window.monthlyScheduleData, window.GPORTAL_FOLDERS.shifts);
+    }
+}
+
+async function saveMeetingsToDrive() {
+    if (typeof AppState !== 'undefined' && AppState.isLoggedIn && window.GPORTAL_FOLDERS) {
+        await saveJsonToDrive(getMeetingsFileName(), window.monthlyMeetingsData, window.GPORTAL_FOLDERS.shifts);
+    }
+}
+
+window.loadScheduleFromDrive = async function () {
+    if (!window.GPORTAL_FOLDERS) return;
+    const [data, meetings] = await Promise.all([
+        getJsonFromDrive(getScheduleFileName(), window.GPORTAL_FOLDERS.shifts),
+        getJsonFromDrive(getMeetingsFileName(), window.GPORTAL_FOLDERS.shifts)
+    ]);
+    window.monthlyScheduleData = data || {};
+    window.monthlyMeetingsData = meetings || {};
+    renderCalendar();
+};
+
+window.renderCalendar = function () {
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    document.getElementById('current-month-display').innerText = `Tháng ${(month + 1).toString().padStart(2, '0')}/${year}`;
+
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const calendarGrid = document.getElementById('calendar-grid');
+    if (!calendarGrid) return;
+    calendarGrid.innerHTML = '';
+
+    for (let i = 0; i < firstDay; i++) calendarGrid.innerHTML += `<div class="calendar-day empty"></div>`;
+
+    const today = new Date();
+    for (let day = 1; day <= daysInMonth; day++) {
+        const dateKey = `${year}-${(month + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+        const isToday = (day === today.getDate() && month === today.getMonth() && year === today.getFullYear());
+        const dayData = window.monthlyScheduleData[dateKey] || { shift: 'OFF', type: 'chinhchu' };
+
+        const meetings = getMeetingsByDate(dateKey);
+        const shiftConfig = getShiftConfig(dayData.shift, false);
+        const otConfig = getShiftConfig(dayData.ot, true);
+        const shiftColor = shiftConfig && shiftConfig.color ? shiftConfig.color : '#475569';
+        const dayStatus = dayData.shift && dayData.shift !== 'OFF' ? 'has-shift' : 'is-off';
+
+        let tagsHtml = `<div class="day-topline"><span class="day-number">${day}</span><span class="day-status ${dayStatus}">${dayStatus === 'has-shift' ? 'Đi làm' : 'OFF'}</span></div>`;
+        if (dayData.shift && dayData.shift !== 'OFF') tagsHtml += `<div class="shift-card" style="--shift-color:${shiftColor}"><b>${escapeHtml(dayData.shift)}</b><span>${escapeHtml(shiftConfig && shiftConfig.time ? shiftConfig.time : 'Chưa cấu hình giờ')}</span></div>`;
+        if (dayData.ot) tagsHtml += `<div class="mini-pill ot"><i class='bx bx-trending-up'></i> OT ${escapeHtml(dayData.ot)}${otConfig && otConfig.time ? ` · ${escapeHtml(otConfig.time)}` : ''}</div>`;
+        if (dayData.task) tagsHtml += `<div class="mini-pill task"><i class='bx bx-check-square'></i> ${escapeHtml(dayData.task)}</div>`;
+        if (dayData.type === 'doica' && dayData.trade) tagsHtml += `<div class="mini-pill trade"><i class='bx bx-transfer'></i> Đổi: ${escapeHtml(dayData.trade)}</div>`;
+        if (dayData.type === 'trucho' && dayData.help) tagsHtml += `<div class="mini-pill help"><i class='bx bx-support'></i> Hộ: ${escapeHtml(dayData.help)}</div>`;
+        meetings.slice(0, 2).forEach(m => { tagsHtml += `<button class="meeting-chip" onclick="event.stopPropagation(); openMeetingModal('${m.id}')"><i class='bx bx-video'></i>${escapeHtml(m.start || '--:--')} ${escapeHtml(m.title)}</button>`; });
+        if (meetings.length > 2) tagsHtml += `<div class="more-chip">+${meetings.length - 2} lịch họp</div>`;
+
+        calendarGrid.innerHTML += `<div class="calendar-day ${isToday ? 'today' : ''} ${meetings.length ? 'has-meeting' : ''}" onclick="openDayModal('${dateKey}')"><div class="day-content">${tagsHtml}</div></div>`;
+    }
+    renderScheduleAgenda();
+};
+
+window.openDayModal = function (dateKey) {
+    editingDateKey = dateKey;
+    const dayData = window.monthlyScheduleData[dateKey] || { type: 'chinhchu', shift: 'OFF', ot: '', task: '', trade: '', help: '' };
+
+    const parts = dateKey.split('-');
+    document.getElementById('modal-date-title').innerText = `Hiệu chỉnh: ${parts[2]}/${parts[1]}/${parts[0]}`;
+
+    if (window.portalSettings) {
+        const shiftsHtml = `<option value="OFF">OFF (Nghỉ)</option>` +
+            (window.portalSettings.shifts || []).map(s => `<option value="${s.code}">${s.code} (${s.time})</option>`).join('');
+        document.getElementById('modal-shift').innerHTML = shiftsHtml;
+
+        const otHtml = `<option value="">-- Không có --</option>` +
+            (window.portalSettings.otShifts || []).map(s => `<option value="${s.code}">${s.code} (${s.time})</option>`).join('');
+        document.getElementById('modal-ot').innerHTML = otHtml;
+
+        const taskSelect = document.getElementById('modal-task');
+        taskSelect.innerHTML = `<option value="">-- Không có --</option>` +
+            (window.portalSettings.tasks || []).map(t => `<option value="${t.name}">${t.name}</option>`).join('');
+
+        const staffOptions = `<option value="">-- Không có --</option>` +
+            (window.portalSettings.staffs || []).map(s => `<option value="${s.name}">${s.name} (${s.id})</option>`).join('');
+        document.getElementById('modal-trade').innerHTML = staffOptions;
+        document.getElementById('modal-help').innerHTML = staffOptions;
+    }
+
+    // Đổ dữ liệu hiện có của ngày vào form (đây là phần trước đây bị cắt cụt, thiếu hẳn)
+    document.getElementById('modal-shift-type').value = dayData.type || 'chinhchu';
+    document.getElementById('modal-shift').value = dayData.shift || 'OFF';
+    document.getElementById('modal-ot').value = dayData.ot || '';
+    document.getElementById('modal-task').value = dayData.task || '';
+    document.getElementById('modal-trade').value = dayData.trade || '';
+    document.getElementById('modal-help').value = dayData.help || '';
+
+    // Hiện/ẩn đúng khối "Đổi ca" / "Trực hộ" theo phân loại ca đang lưu
+    document.getElementById('modal-trade-group').style.display = dayData.type === 'doica' ? 'block' : 'none';
+    document.getElementById('modal-help-group').style.display = dayData.type === 'trucho' ? 'block' : 'none';
+
+    document.getElementById('day-modal').classList.add('active');
+};
+
+// FIX: hàm này trước đây được nút "Lưu" gọi tới nhưng chưa từng tồn tại trong file.
+function saveDayEdit() {
+    if (!editingDateKey) return;
+
+    const type = document.getElementById('modal-shift-type').value;
+    const shift = document.getElementById('modal-shift').value;
+    const ot = document.getElementById('modal-ot').value;
+    const task = document.getElementById('modal-task').value;
+    const trade = type === 'doica' ? document.getElementById('modal-trade').value : '';
+    const help = type === 'trucho' ? document.getElementById('modal-help').value : '';
+
+    window.monthlyScheduleData[editingDateKey] = { type, shift, ot, task, trade, help };
+
+    const savedKey = editingDateKey;
+    closeDayModal();
+    renderCalendar();
+    saveScheduleToDrive();
+
+    // Đồng bộ ngay lập tức Google Task theo PCCV vừa lưu (nếu đã đăng nhập),
+    // để không phải đợi người dùng bấm nút "Đồng bộ Google" thủ công.
+    if (typeof AppState !== 'undefined' && AppState.isLoggedIn) {
+        if (task && task.trim() !== '') {
+            let taskNote = [];
+            if (shift && shift !== 'OFF') taskNote.push(`Ca: ${shift}`);
+            if (ot) taskNote.push(`OT: ${ot}`);
+            if (typeof syncGoogleTask === 'function') syncGoogleTask(savedKey, task, taskNote.join(' | '));
+        } else if (typeof deleteGoogleTask === 'function') {
+            deleteGoogleTask(savedKey);
+        }
+    }
+}
+
+// FIX: đây là phần đọc & parse file Excel bị mất trước đây (chỉ còn sót lại đoạn
+// alert cuối cùng). Cấu trúc cột theo đúng file mẫu: Ngày, Mã Ca, OT, Mã PCCV,
+// Phân loại, Nhân sự liên quan.
+function handleExcelUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function (e) {
         try {
-            const savedToken = JSON.parse(savedTokenStr);
-            if (gapi.client) {
-                gapi.client.setToken(savedToken);
-                AppState.isLoggedIn = true;
-                if (typeof window.showApp === 'function') window.showApp();
-                loadAllDataFromDrive();
-            }
-        } catch (e) {
-            console.error("Lỗi parse token:", e);
-            localStorage.removeItem('gapi_token');
-            if (typeof window.showLogin === 'function') window.showLogin();
-        }
-    }
-}
+            const data = new Uint8Array(e.target.result);
+            const wb = XLSX.read(data, { type: 'array' });
+            const rawJson = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
 
-// Gọi API lấy dữ liệu Settings, Lịch, Năng suất
-function loadAllDataFromDrive() {
-    if (typeof window.loadSettingsFromDrive === 'function') window.loadSettingsFromDrive();
-    if (typeof window.loadScheduleFromDrive === 'function') window.loadScheduleFromDrive();
-    if (typeof window.loadProductivityFromDrive === 'function') window.loadProductivityFromDrive();
-}
+            let importedCount = 0;
+            rawJson.forEach(row => {
+                const rawDate = row['Ngày'] || row['Date'];
+                const shift = (row['Mã Ca'] || row['Shift'] || 'OFF').toString().trim();
+                const ot = (row['OT'] || '').toString().trim();
+                const task = (row['Mã PCCV'] || row['Task'] || '').toString().trim();
+                const typeRaw = (row['Phân loại'] || row['Type'] || 'Chính chủ').toString().trim().toLowerCase();
+                const staff = (row['Nhân sự liên quan'] || row['Staff'] || '').toString().trim();
 
-// Nút Đăng nhập
-window.handleAuthClick = function () {
-    if (tokenClient) {
-        tokenClient.requestAccessToken({ prompt: 'consent' });
-    } else {
-        let reason = 'chưa rõ nguyên nhân — hãy xem dòng chữ đỏ phía dưới nút này hoặc mở Console (F12) để xem lỗi.';
-        if (!window.gapi) reason = 'thư viện apis.google.com/js/api.js chưa tải xong hoặc bị chặn.';
-        else if (!window.google || !window.google.accounts) reason = 'thư viện accounts.google.com/gsi/client chưa tải xong hoặc bị chặn.';
-        else if (!gapiInited) reason = 'gapi.client chưa khởi tạo xong (xem Console F12 để biết lỗi cụ thể).';
-        setLoginStatus('Chưa thể đăng nhập: ' + reason, true);
-        alert("Hệ thống Google chưa sẵn sàng: " + reason);
-    }
-};
+                const dateKey = parseDateToKey(rawDate);
+                if (!dateKey) return;
 
-// Nút Đăng xuất
-window.handleSignoutClick = function () {
-    const token = gapi.client.getToken();
-    if (token !== null) {
-        google.accounts.oauth2.revoke(token.access_token, () => {
-            console.log('Đã thu hồi quyền truy cập (Revoked token)');
-        });
-        gapi.client.setToken('');
-    }
-    localStorage.removeItem('gapi_token');
-    AppState.isLoggedIn = false;
-    if (typeof window.showLogin === 'function') window.showLogin();
-};
+                let type = 'chinhchu';
+                if (typeRaw.includes('đổi') || typeRaw.includes('doi')) type = 'doica';
+                else if (typeRaw.includes('trực') || typeRaw.includes('truc')) type = 'trucho';
 
-// ========================================================
-// PHẦN LOGIC ĐỒNG BỘ LỊCH VÀ TASKS
-// ========================================================
-
-const WORK_CALENDAR_ID = 'primary'; // TODO: thay bằng ID lịch làm việc Google Calendar riêng nếu có.
-const MEETING_CALENDAR_ID = '0770c7fff204ae1af3aa25c9a88b00c17bb59c5f6f0b03dd5aa6b51fd3b567d5@group.calendar.google.com'; // TODO: thay bằng ID lịch họp riêng nếu cần.
-
-function getConfiguredCalendarId(kind) {
-    return kind === 'meeting' ? MEETING_CALENDAR_ID : WORK_CALENDAR_ID;
-}
-
-// Xoá (các) sự kiện đã tồn tại của 1 ngày trên 1 calendar cụ thể, lọc theo tiền tố "query"
-// (để không đụng vào các sự kiện cá nhân khác không phải do G-Portal tạo ra).
-async function deleteCalendarEvent(dateStr, calendarId = getConfiguredCalendarId('work'), query = '[G-Portal Work]') {
-    try {
-        const minTime = `${dateStr}T00:00:00+07:00`;
-        const maxTime = `${dateStr}T23:59:59+07:00`;
-        const response = await gapi.client.calendar.events.list({
-            calendarId: calendarId,
-            timeMin: minTime,
-            timeMax: maxTime,
-            q: query,
-            singleEvents: true
-        });
-
-        const events = response.result.items;
-        if (events && events.length > 0) {
-            for (const ev of events) {
-                await gapi.client.calendar.events.delete({
-                    calendarId: calendarId,
-                    eventId: ev.id
-                });
-            }
-        }
-    } catch (err) {
-        console.error("Lỗi khi xóa sự kiện Lịch:", err);
-    }
-}
-
-// Đồng bộ 1 ngày lên Google Calendar (thêm mới hoặc cập nhật = xoá cũ rồi tạo lại)
-window.syncCalendarEvent = async function (dateStr, shiftCode, shiftTime, description) {
-    if (!AppState.isLoggedIn || !gapi.client) return;
-
-    const calendarId = getConfiguredCalendarId('work');
-    await deleteCalendarEvent(dateStr, calendarId, '[G-Portal Work]');
-
-    let startTimeStr = "08:00:00";
-    let endTimeStr = "17:00:00";
-    if (shiftTime && shiftTime.includes("-")) {
-        const parts = shiftTime.split("-");
-        startTimeStr = parts[0].trim() + ":00";
-        endTimeStr = parts[1].trim() + ":00";
-    }
-
-    const startDateTime = `${dateStr}T${startTimeStr}+07:00`;
-    const endDateTime = `${dateStr}T${endTimeStr}+07:00`;
-
-    const event = {
-        summary: `[G-Portal Work] Ca: ${shiftCode}`,
-        description: description,
-        start: { dateTime: startDateTime, timeZone: 'Asia/Ho_Chi_Minh' },
-        end: { dateTime: endDateTime, timeZone: 'Asia/Ho_Chi_Minh' }
-    };
-
-    try {
-        await gapi.client.calendar.events.insert({
-            calendarId: calendarId,
-            resource: event
-        });
-        console.log(`Đã đồng bộ Lịch ngày ${dateStr} thành công.`);
-    } catch (err) {
-        console.error("Lỗi đồng bộ Lịch: ", err);
-    }
-};
-
-// Xoá sự kiện làm việc của 1 ngày (dùng khi ngày đó chuyển thành OFF hoàn toàn, không còn ca/OT)
-window.deleteWorkCalendarEvent = async function (dateStr) {
-    if (!AppState.isLoggedIn || !gapi.client) return;
-    await deleteCalendarEvent(dateStr, getConfiguredCalendarId('work'), '[G-Portal Work]');
-};
-
-window.deleteMeetingCalendarEvent = async function (meeting) {
-    if (!AppState.isLoggedIn || !gapi.client || !meeting) return;
-    await deleteCalendarEvent(meeting.date, getConfiguredCalendarId('meeting'), `[G-Portal Meeting] ${meeting.id}`);
-};
-
-window.syncMeetingCalendarEvent = async function (meeting) {
-    if (!AppState.isLoggedIn || !gapi.client || !meeting) return;
-    const calendarId = getConfiguredCalendarId('meeting');
-    await deleteCalendarEvent(meeting.date, calendarId, `[G-Portal Meeting] ${meeting.id}`);
-
-    const startDateTime = `${meeting.date}T${meeting.start || '09:00'}:00+07:00`;
-    const endDateTime = `${meeting.date}T${meeting.end || '10:00'}:00+07:00`;
-    const isOnline = meeting.mode === 'online';
-    const event = {
-        summary: `[G-Portal Meeting] ${meeting.id} ${meeting.title}`,
-        description: [meeting.content, isOnline ? `Link họp: ${meeting.location || ''}` : `Địa điểm: ${meeting.location || ''}`].filter(Boolean).join('\n'),
-        location: meeting.location || '',
-        start: { dateTime: startDateTime, timeZone: 'Asia/Ho_Chi_Minh' },
-        end: { dateTime: endDateTime, timeZone: 'Asia/Ho_Chi_Minh' }
-    };
-
-    try {
-        await gapi.client.calendar.events.insert({ calendarId, resource: event });
-        console.log(`Đã đồng bộ lịch họp ${meeting.id}.`);
-    } catch (err) {
-        console.error('Lỗi đồng bộ lịch họp:', err);
-    }
-};
-
-// Tìm Google Task đã tồn tại của 1 ngày cụ thể (dựa vào trường "due")
-async function findGoogleTaskByDate(dateKey) {
-    const listRes = await gapi.client.tasks.tasks.list({
-        tasklist: '@default',
-        showCompleted: false,
-        showHidden: false,
-        maxResults: 100
-    });
-    const items = listRes.result.items || [];
-    return items.find(t => t.due && t.due.substring(0, 10) === dateKey);
-}
-
-// Đồng bộ PCCV lên Google Tasks: cập nhật nếu đã có Task của ngày đó, thêm mới nếu chưa có
-window.syncGoogleTask = async function (dateKey, taskName, notes) {
-    if (!AppState.isLoggedIn || !gapi.client.tasks) return;
-    try {
-        const dueISO = `${dateKey}T00:00:00.000Z`;
-        const existing = await findGoogleTaskByDate(dateKey);
-        const taskBody = { title: `[G-Portal] ${taskName}`, notes: notes || '', due: dueISO };
-
-        if (existing) {
-            await gapi.client.tasks.tasks.update({
-                tasklist: '@default',
-                task: existing.id,
-                resource: { ...taskBody, id: existing.id }
+                window.monthlyScheduleData[dateKey] = {
+                    type,
+                    shift: shift || 'OFF',
+                    ot,
+                    task,
+                    trade: type === 'doica' ? staff : '',
+                    help: type === 'trucho' ? staff : ''
+                };
+                importedCount++;
             });
+
+            alert(`Import Lịch thành công! (${importedCount} ngày)`);
+            renderCalendar();
+            saveScheduleToDrive();
+        } catch (err) {
+            console.error('Lỗi đọc file Excel:', err);
+            alert("Không đọc được file Excel. Vui lòng dùng đúng định dạng file mẫu (.xlsx/.xls).");
+        } finally {
+            document.getElementById('excel-upload').value = '';
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+function parseDateToKey(dateStr) {
+    if (typeof dateStr === 'number') {
+        const date = new Date(Math.round((dateStr - 25569) * 86400 * 1000));
+        return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+    }
+    if (typeof dateStr === 'string') {
+        const parts = dateStr.split('/');
+        if (parts.length === 3) return `${parts[2].trim()}-${parts[1].trim().padStart(2, '0')}-${parts[0].trim().padStart(2, '0')}`;
+        if (dateStr.includes('-')) return dateStr.substring(0, 10);
+    }
+    return null;
+}
+
+function escapeHtml(value) {
+    return String(value || '').replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
+}
+
+function getShiftConfig(code, isOt) {
+    if (!code || code === 'OFF' || !window.portalSettings) return null;
+    const list = isOt ? window.portalSettings.otShifts : window.portalSettings.shifts;
+    return (list || []).find(s => s.code === code) || null;
+}
+
+function getMeetingsByDate(dateKey) {
+    return Object.values(window.monthlyMeetingsData || {}).filter(m => m.date === dateKey).sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+}
+
+function renderScheduleAgenda() {
+    const agenda = document.getElementById('schedule-agenda');
+    const meetingAgenda = document.getElementById('meeting-agenda');
+    if (!agenda || !meetingAgenda) return;
+    const workItems = Object.entries(window.monthlyScheduleData || {}).filter(([, d]) => d.task || (d.shift && d.shift !== 'OFF') || d.ot).sort(([a], [b]) => a.localeCompare(b));
+    document.getElementById('schedule-task-count').innerText = workItems.length;
+    agenda.innerHTML = workItems.length ? workItems.map(([date, d]) => `<button class="agenda-item" onclick="openDayModal('${date}')"><b>${date.slice(8, 10)}/${date.slice(5, 7)}</b><span>${escapeHtml(d.shift || 'OFF')}${d.ot ? ` · OT ${escapeHtml(d.ot)}` : ''}</span><small>${escapeHtml(d.task || 'Chưa phân công PCCV')}</small></button>`).join('') : '<div class="empty-agenda">Chưa có lịch làm việc trong tháng.</div>';
+
+    const meetings = Object.values(window.monthlyMeetingsData || {}).sort((a, b) => (`${a.date} ${a.start}`).localeCompare(`${b.date} ${b.start}`));
+    document.getElementById('meeting-count').innerText = meetings.length;
+    meetingAgenda.innerHTML = meetings.length ? meetings.map(m => `<button class="agenda-item meeting" onclick="openMeetingModal('${m.id}')"><b>${m.date.slice(8, 10)}/${m.date.slice(5, 7)} · ${escapeHtml(m.start)}</b><span>${escapeHtml(m.title)}</span><small>${m.mode === 'online' ? 'Online' : 'Offline'} · ${escapeHtml(m.location)}</small></button>`).join('') : '<div class="empty-agenda">Chưa có lịch họp trong tháng.</div>';
+}
+
+function closeMeetingModal() {
+    document.getElementById('meeting-modal').classList.remove('active');
+    editingMeetingId = null;
+}
+
+function updateMeetingLocationLabel() {
+    const online = document.getElementById('meeting-mode').value === 'online';
+    document.getElementById('meeting-location-label').innerText = online ? 'Link Webex / Google Meet' : 'Địa chỉ văn phòng / phòng họp';
+    document.getElementById('meeting-location').placeholder = online ? 'https://meet.google.com/... hoặc link Webex' : 'VD: Văn phòng Q1 - Phòng họp A';
+}
+
+window.openMeetingModal = function (meetingId) {
+    editingMeetingId = meetingId || null;
+    const m = editingMeetingId ? window.monthlyMeetingsData[editingMeetingId] : null;
+    document.getElementById('meeting-modal-title').innerText = m ? 'Cập nhật lịch họp' : 'Thêm lịch họp';
+    document.getElementById('meeting-date').value = m && m.date ? m.date : `${currentDate.getFullYear()}-${(currentDate.getMonth() + 1).toString().padStart(2, '0')}-01`;
+    document.getElementById('meeting-start').value = m && m.start ? m.start : '09:00';
+    document.getElementById('meeting-end').value = m && m.end ? m.end : '10:00';
+    document.getElementById('meeting-mode').value = m && m.mode ? m.mode : 'offline';
+    document.getElementById('meeting-title').value = m && m.title ? m.title : '';
+    document.getElementById('meeting-content').value = m && m.content ? m.content : '';
+    document.getElementById('meeting-location').value = m && m.location ? m.location : '';
+    document.getElementById('btn-delete-meeting').style.display = m ? 'inline-flex' : 'none';
+    updateMeetingLocationLabel();
+    document.getElementById('meeting-modal').classList.add('active');
+};
+
+function saveMeetingEdit() {
+    const date = document.getElementById('meeting-date').value;
+    const title = document.getElementById('meeting-title').value.trim();
+    if (!date || !title) return alert('Vui lòng nhập ngày họp và tiêu đề.');
+    const id = editingMeetingId || `meeting_${Date.now()}`;
+    const previousMeeting = editingMeetingId ? window.monthlyMeetingsData[editingMeetingId] : null;
+    if (previousMeeting && previousMeeting.date !== date && typeof window.deleteMeetingCalendarEvent === 'function') {
+        window.deleteMeetingCalendarEvent(previousMeeting);
+    }
+    window.monthlyMeetingsData[id] = {
+        id, date,
+        start: document.getElementById('meeting-start').value || '09:00',
+        end: document.getElementById('meeting-end').value || '10:00',
+        mode: document.getElementById('meeting-mode').value,
+        title,
+        content: document.getElementById('meeting-content').value.trim(),
+        location: document.getElementById('meeting-location').value.trim()
+    };
+    closeMeetingModal();
+    renderCalendar();
+    saveMeetingsToDrive();
+}
+
+function deleteMeetingEdit() {
+    if (!editingMeetingId) return;
+    const meeting = window.monthlyMeetingsData[editingMeetingId];
+    if (meeting && typeof window.deleteMeetingCalendarEvent === 'function') window.deleteMeetingCalendarEvent(meeting);
+    delete window.monthlyMeetingsData[editingMeetingId];
+    closeMeetingModal();
+    renderCalendar();
+    saveMeetingsToDrive();
+}
+
+/**
+ * Đồng bộ toàn bộ tháng đang xem lên Google Calendar + Google Tasks + Lịch họp.
+ * - Nếu ngày OFF và không OT -> xoá sự kiện Calendar nếu có.
+ * - Nếu có ca chính hoặc OT -> tạo/cập nhật sự kiện Calendar theo đúng khung giờ.
+ * - Nếu có PCCV -> tạo/cập nhật Google Task; nếu PCCV bị gỡ -> xoá Task tương ứng.
+ * - Cuối cùng đồng bộ toàn bộ lịch họp trong tháng.
+ */
+async function syncToGoogleEcosystem() {
+    if (typeof AppState === 'undefined' || !AppState.isLoggedIn) return alert("Vui lòng đăng nhập Google trước!");
+
+    const keys = Object.keys(window.monthlyScheduleData);
+    const meetingItems = Object.values(window.monthlyMeetingsData || {});
+    if (keys.length === 0 && meetingItems.length === 0) return alert("Không có dữ liệu để đồng bộ.");
+
+    alert("Đang tiến hành đồng bộ nền... Quá trình này có thể mất vài giây, vui lòng không tắt trình duyệt.");
+
+    for (const key of keys) {
+        const dayData = window.monthlyScheduleData[key];
+        const hasMainShift = dayData.shift && dayData.shift !== 'OFF';
+        const hasOT = dayData.ot && dayData.ot.trim() !== '';
+
+        // ----- 1. ĐỒNG BỘ GOOGLE CALENDAR -----
+        if (!hasMainShift && !hasOT) {
+            // Ngày nghỉ hoàn toàn, không OT -> xoá sự kiện lịch nếu có từ lần đồng bộ trước
+            if (typeof window.deleteWorkCalendarEvent === 'function') await window.deleteWorkCalendarEvent(key);
         } else {
-            await gapi.client.tasks.tasks.insert({
-                tasklist: '@default',
-                resource: taskBody
-            });
-        }
-        console.log(`Đã đồng bộ Task PCCV ngày ${dateKey}.`);
-    } catch (err) {
-        console.error('Lỗi đồng bộ Google Task:', err);
-    }
-};
+            let shiftLabel = hasMainShift ? dayData.shift : `OT ${dayData.ot} (OFF)`;
+            let shiftTime = "08:00 - 17:00";
 
-// Xoá Google Task của 1 ngày (dùng khi PCCV bị gỡ khỏi ngày đó trên G-Portal)
-window.deleteGoogleTask = async function (dateKey) {
-    if (!AppState.isLoggedIn || !gapi.client.tasks) return;
-    try {
-        const existing = await findGoogleTaskByDate(dateKey);
-        if (existing) {
-            await gapi.client.tasks.tasks.delete({ tasklist: '@default', task: existing.id });
-            console.log(`Đã xoá Task PCCV ngày ${dateKey}.`);
+            if (hasMainShift && window.portalSettings && window.portalSettings.shifts) {
+                const conf = window.portalSettings.shifts.find(s => s.code === dayData.shift);
+                if (conf) shiftTime = conf.time;
+            } else if (!hasMainShift && hasOT && window.portalSettings && window.portalSettings.otShifts) {
+                // Ca chính OFF nhưng có tăng cường -> lấy giờ theo ca OT
+                const conf = window.portalSettings.otShifts.find(s => s.code === dayData.ot);
+                if (conf) shiftTime = conf.time;
+            }
+
+            let desc = [];
+            if (dayData.task) desc.push(`PCCV: ${dayData.task}`);
+            if (hasMainShift && hasOT) desc.push(`OT: ${dayData.ot}`);
+            if (dayData.type === 'doica' && dayData.trade) desc.push(`Đổi ca: ${dayData.trade}`);
+            if (dayData.type === 'trucho' && dayData.help) desc.push(`Trực hộ: ${dayData.help}`);
+
+            if (typeof syncCalendarEvent === 'function') await syncCalendarEvent(key, shiftLabel, shiftTime, desc.join('\n'));
         }
-    } catch (err) {
-        console.error('Lỗi xoá Google Task:', err);
+
+        // ----- 2. ĐỒNG BỘ GOOGLE TASKS (PCCV) -----
+        if (dayData.task && dayData.task.trim() !== '') {
+            let taskNote = [];
+            if (hasMainShift) taskNote.push(`Ca: ${dayData.shift}`);
+            if (hasOT) taskNote.push(`OT: ${dayData.ot}`);
+            if (typeof syncGoogleTask === 'function') await syncGoogleTask(key, dayData.task, taskNote.join(' | '));
+        } else {
+            if (typeof deleteGoogleTask === 'function') await deleteGoogleTask(key);
+        }
     }
-};
+
+    // ----- 3. ĐỒNG BỘ LỊCH HỌP -----
+    for (const meeting of meetingItems) {
+        if (typeof syncMeetingCalendarEvent === 'function') await syncMeetingCalendarEvent(meeting);
+    }
+
+    alert("✅ Đã đồng bộ Lịch, Task và Lịch họp lên Google thành công!");
+}
