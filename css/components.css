@@ -77,10 +77,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.8); cur
 @media (max-width: 1100px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 992px) { .settings-grid { grid-template-columns: 1fr; } }
 @media (max-width: 560px) { .kpi-grid { grid-template-columns: 1fr; } .prod-grid { grid-template-columns: 1fr; } }
-@media (max-width: 560px) { .kpi-grid { grid-template-columns: 1fr; } .prod-grid { grid-template-columns: 1fr; } }
 /* ---------- Lịch làm việc nâng cấp + Lịch họp ---------- */
-.schedule-google-config { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) auto; gap: 14px; align-items: end; margin-bottom: 18px; padding: 16px 18px; }
-.config-field label { display: block; margin-bottom: 4px; }
 .schedule-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; }
 .schedule-side { padding: 18px; position: sticky; top: 20px; max-height: calc(100vh - 150px); overflow-y: auto; }
 .side-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-weight: 700; color: var(--text-main); margin-bottom: 12px; }
@@ -102,7 +99,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.8); cur
 .day-status { font-size: 9.5px; font-weight: 800; letter-spacing: .2px; padding: 2px 7px; border-radius: 999px; }
 .day-status.has-shift { background: rgba(16, 185, 129, .16); color: #34d399; }
 .day-status.is-off { background: rgba(148, 163, 184, .12); color: var(--text-muted); }
-.shift-card { border-left: 4px solid var(--shift-color); background: color-mix(in srgb, var(--shift-color) 16%, var(--bg-primary)); border-radius: 9px; padding: 7px 8px; display: grid; gap: 2px; }
+.shift-card { border-left: 4px solid var(--shift-color); background: rgba(56, 189, 248, .10); border-radius: 9px; padding: 7px 8px; display: grid; gap: 2px; }
 .shift-card b { color: #fff; font-size: 13px; }
 :root[data-theme="light"] .shift-card b { color: var(--text-main); }
 .shift-card span { color: var(--text-muted); font-size: 10.5px; }
@@ -120,4 +117,5 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.8); cur
 .btn-ghost.danger { color: var(--danger, #ef4444); border-color: rgba(239, 68, 68, .35); }
 textarea.form-input { resize: vertical; min-height: 96px; }
 @media (max-width: 1180px) { .schedule-layout { grid-template-columns: 1fr; } .schedule-side { position: static; max-height: none; } }
+@media (max-width: 760px) { .meeting-form-grid { grid-template-columns: 1fr; } }; } }
 @media (max-width: 760px) { .schedule-google-config, .meeting-form-grid { grid-template-columns: 1fr; } }
