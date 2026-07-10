@@ -1,6 +1,8 @@
 window.monthlyScheduleData = window.monthlyScheduleData || {};
+window.monthlyMeetingsData = window.monthlyMeetingsData || {};
 let currentDate = new Date();
 let editingDateKey = null;
+let editingMeetingId = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     // Mỗi bước bọc try/catch riêng: nếu 1 bước lỗi, các bước còn lại (đặc biệt là
@@ -48,6 +50,14 @@ function initScheduleEvents() {
 
     document.getElementById('btn-save-day').addEventListener('click', saveDayEdit);
     document.getElementById('btn-sync-calendar').addEventListener('click', syncToGoogleEcosystem);
+    document.getElementById('btn-add-meeting').addEventListener('click', () => openMeetingModal());
+    document.getElementById('btn-close-meeting-modal').addEventListener('click', closeMeetingModal);
+    document.getElementById('meeting-modal').addEventListener('click', (e) => { if (e.target.id === 'meeting-modal') closeMeetingModal(); });
+    document.getElementById('btn-save-meeting').addEventListener('click', saveMeetingEdit);
+    document.getElementById('btn-delete-meeting').addEventListener('click', deleteMeetingEdit);
+    document.getElementById('meeting-mode').addEventListener('change', updateMeetingLocationLabel);
+    document.getElementById('btn-save-calendar-ids').addEventListener('click', saveCalendarIds);
+    loadCalendarIds();
 }
 
 function closeDayModal() {
@@ -57,6 +67,7 @@ function closeDayModal() {
 
 function changeMonthHandler() {
     window.monthlyScheduleData = {};
+    window.monthlyMeetingsData = {};
     renderCalendar();
     if (typeof AppState !== 'undefined' && AppState.isLoggedIn) loadScheduleFromDrive();
 }
@@ -67,9 +78,21 @@ function getScheduleFileName() {
     return `schedule_${year}_${month}.json`;
 }
 
+function getMeetingsFileName() {
+    const year = currentDate.getFullYear();
+    const month = (currentDate.getMonth() + 1).toString().padStart(2, '0');
+    return `meetings_${year}_${month}.json`;
+}
+
 async function saveScheduleToDrive() {
     if (typeof AppState !== 'undefined' && AppState.isLoggedIn && window.GPORTAL_FOLDERS) {
         await saveJsonToDrive(getScheduleFileName(), window.monthlyScheduleData, window.GPORTAL_FOLDERS.shifts);
+    }
+}
+
+async function saveMeetingsToDrive() {
+    if (typeof AppState !== 'undefined' && AppState.isLoggedIn && window.GPORTAL_FOLDERS) {
+        await saveJsonToDrive(getMeetingsFileName(), window.monthlyMeetingsData, window.GPORTAL_FOLDERS.shifts);
     }
 }
 
@@ -77,6 +100,10 @@ window.loadScheduleFromDrive = async function () {
     if (!window.GPORTAL_FOLDERS) return;
     const data = await getJsonFromDrive(getScheduleFileName(), window.GPORTAL_FOLDERS.shifts);
     if (data) { window.monthlyScheduleData = data; renderCalendar(); }
+    const meetings = await getJsonFromDrive(getMeetingsFileName(), window.GPORTAL_FOLDERS.shifts);
+    window.monthlyScheduleData = data || {};
+    window.monthlyMeetingsData = meetings || {};
+    renderCalendar();
 }
 
 window.renderCalendar = function () {
@@ -126,7 +153,24 @@ window.renderCalendar = function () {
             <div class="calendar-day ${isToday ? 'today' : ''}" onclick="openDayModal('${dateKey}')">
                 <div class="day-number">${day}</div><div class="day-content">${tagsHtml}</div>
             </div>`;
+        const meetings = getMeetingsByDate(dateKey);
+        const shiftConfig = getShiftConfig(dayData.shift, false);
+        const otConfig = getShiftConfig(dayData.ot, true);
+        const shiftColor = shiftConfig?.color || '#475569';
+        const dayStatus = dayData.shift && dayData.shift !== 'OFF' ? 'has-shift' : 'is-off';
+
+        let tagsHtml = `<div class="day-topline"><span class="day-number">${day}</span><span class="day-status ${dayStatus}">${dayStatus === 'has-shift' ? 'Đi làm' : 'OFF'}</span></div>`;
+        if (dayData.shift && dayData.shift !== 'OFF') tagsHtml += `<div class="shift-card" style="--shift-color:${shiftColor}"><b>${escapeHtml(dayData.shift)}</b><span>${escapeHtml(shiftConfig?.time || 'Chưa cấu hình giờ')}</span></div>`;
+        if (dayData.ot) tagsHtml += `<div class="mini-pill ot"><i class='bx bx-trending-up'></i> OT ${escapeHtml(dayData.ot)}${otConfig?.time ? ` · ${escapeHtml(otConfig.time)}` : ''}</div>`;
+        if (dayData.task) tagsHtml += `<div class="mini-pill task"><i class='bx bx-check-square'></i> ${escapeHtml(dayData.task)}</div>`;
+        if (dayData.type === 'doica' && dayData.trade) tagsHtml += `<div class="mini-pill trade"><i class='bx bx-transfer'></i> Đổi: ${escapeHtml(dayData.trade)}</div>`;
+        if (dayData.type === 'trucho' && dayData.help) tagsHtml += `<div class="mini-pill help"><i class='bx bx-support'></i> Hộ: ${escapeHtml(dayData.help)}</div>`;
+        meetings.slice(0, 2).forEach(m => { tagsHtml += `<button class="meeting-chip" onclick="event.stopPropagation(); openMeetingModal('${m.id}')"><i class='bx bx-video'></i>${escapeHtml(m.start || '--:--')} ${escapeHtml(m.title)}</button>`; });
+        if (meetings.length > 2) tagsHtml += `<div class="more-chip">+${meetings.length - 2} lịch họp</div>`;
+
+        calendarGrid.innerHTML += `<div class="calendar-day ${isToday ? 'today' : ''} ${meetings.length ? 'has-meeting' : ''}" onclick="openDayModal('${dateKey}')"><div class="day-content">${tagsHtml}</div></div>`;
     }
+    renderScheduleAgenda();
 }
 
 function openDayModal(dateKey) {
@@ -152,69 +196,7 @@ function openDayModal(dateKey) {
         const staffOptions = `<option value="">-- Không có --</option>` +
             (window.portalSettings.staffs || []).map(s => `<option value="${s.name}">${s.name} (${s.id})</option>`).join('');
         document.getElementById('modal-trade').innerHTML = staffOptions;
-        document.getElementById('modal-help').innerHTML = staffOptions;
-    }
-
-    document.getElementById('modal-shift-type').value = dayData.type || 'chinhchu';
-    document.getElementById('modal-shift').value = dayData.shift || 'OFF';
-    document.getElementById('modal-ot').value = dayData.ot || '';
-    document.getElementById('modal-task').value = dayData.task || '';
-    document.getElementById('modal-trade').value = dayData.trade || '';
-    document.getElementById('modal-help').value = dayData.help || '';
-
-    document.getElementById('modal-shift-type').dispatchEvent(new Event('change'));
-    document.getElementById('day-modal').classList.add('active');
-}
-
-function saveDayEdit() {
-    if (!editingDateKey) return;
-    const type = document.getElementById('modal-shift-type').value;
-    const shift = document.getElementById('modal-shift').value;
-    const ot = document.getElementById('modal-ot').value;
-    const task = document.getElementById('modal-task').value;
-    let trade = ''; let help = '';
-
-    if (type === 'doica') trade = document.getElementById('modal-trade').value;
-    if (type === 'trucho') help = document.getElementById('modal-help').value;
-
-    window.monthlyScheduleData[editingDateKey] = { type, shift, ot, task, trade, help };
-
-    closeDayModal();
-    renderCalendar();
-    saveScheduleToDrive();
-}
-
-function handleExcelUpload(event) {
-    const file = event.target.files[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = function (e) {
-        try {
-            const data = new Uint8Array(e.target.result);
-            const wb = XLSX.read(data, { type: 'array' });
-            const rawJson = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-
-            rawJson.forEach(row => {
-                const dateStr = row['Ngày'] || row['Date'];
-                const shiftCode = row['Mã Ca'] || row['Ca'];
-                if (dateStr && shiftCode) {
-                    const formattedKey = parseDateToKey(dateStr);
-                    if (formattedKey) {
-                        let type = 'chinhchu'; let trade = ''; let help = '';
-                        const rawType = (row['Phân loại'] || '').toLowerCase();
-                        const person = row['Nhân sự liên quan'] || '';
-                        if (rawType.includes('đổi')) { type = 'doica'; trade = person; }
-                        else if (rawType.includes('hộ')) { type = 'trucho'; help = person; }
-
-                        window.monthlyScheduleData[formattedKey] = {
-                            type: type,
-                            shift: shiftCode,
-                            ot: row['OT'] || '',
-                            task: row['Mã PCCV'] || row['PCCV'] || '',
-                            trade: trade, help: help
-                        };
-                    }
-                }
-            });
+@@ -218,50 +232,148 @@ function handleExcelUpload(event) {
             alert("Import Lịch thành công!");
             renderCalendar(); saveScheduleToDrive();
         } catch (err) {
@@ -240,6 +222,104 @@ function parseDateToKey(dateStr) {
     return null;
 }
 
+
+function escapeHtml(value) {
+    return String(value || '').replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
+}
+
+function getShiftConfig(code, isOt) {
+    if (!code || code === 'OFF' || !window.portalSettings) return null;
+    const list = isOt ? window.portalSettings.otShifts : window.portalSettings.shifts;
+    return (list || []).find(s => s.code === code) || null;
+}
+
+function getMeetingsByDate(dateKey) {
+    return Object.values(window.monthlyMeetingsData || {}).filter(m => m.date === dateKey).sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+}
+
+function renderScheduleAgenda() {
+    const agenda = document.getElementById('schedule-agenda');
+    const meetingAgenda = document.getElementById('meeting-agenda');
+    if (!agenda || !meetingAgenda) return;
+    const workItems = Object.entries(window.monthlyScheduleData || {}).filter(([, d]) => d.task || (d.shift && d.shift !== 'OFF') || d.ot).sort(([a], [b]) => a.localeCompare(b));
+    document.getElementById('schedule-task-count').innerText = workItems.length;
+    agenda.innerHTML = workItems.length ? workItems.map(([date, d]) => `<button class="agenda-item" onclick="openDayModal('${date}')"><b>${date.slice(8,10)}/${date.slice(5,7)}</b><span>${escapeHtml(d.shift || 'OFF')}${d.ot ? ` · OT ${escapeHtml(d.ot)}` : ''}</span><small>${escapeHtml(d.task || 'Chưa phân công PCCV')}</small></button>`).join('') : '<div class="empty-agenda">Chưa có lịch làm việc trong tháng.</div>';
+
+    const meetings = Object.values(window.monthlyMeetingsData || {}).sort((a, b) => (`${a.date} ${a.start}`).localeCompare(`${b.date} ${b.start}`));
+    document.getElementById('meeting-count').innerText = meetings.length;
+    meetingAgenda.innerHTML = meetings.length ? meetings.map(m => `<button class="agenda-item meeting" onclick="openMeetingModal('${m.id}')"><b>${m.date.slice(8,10)}/${m.date.slice(5,7)} · ${escapeHtml(m.start)}</b><span>${escapeHtml(m.title)}</span><small>${m.mode === 'online' ? 'Online' : 'Offline'} · ${escapeHtml(m.location)}</small></button>`).join('') : '<div class="empty-agenda">Chưa có lịch họp trong tháng.</div>';
+}
+
+function loadCalendarIds() {
+    document.getElementById('work-calendar-id').value = localStorage.getItem('gportal_work_calendar_id') || 'primary';
+    document.getElementById('meeting-calendar-id').value = localStorage.getItem('gportal_meeting_calendar_id') || 'primary';
+}
+
+function saveCalendarIds() {
+    localStorage.setItem('gportal_work_calendar_id', document.getElementById('work-calendar-id').value.trim() || 'primary');
+    localStorage.setItem('gportal_meeting_calendar_id', document.getElementById('meeting-calendar-id').value.trim() || 'primary');
+    alert('Đã lưu Google Calendar ID.');
+}
+
+function closeMeetingModal() {
+    document.getElementById('meeting-modal').classList.remove('active');
+    editingMeetingId = null;
+}
+
+function updateMeetingLocationLabel() {
+    const online = document.getElementById('meeting-mode').value === 'online';
+    document.getElementById('meeting-location-label').innerText = online ? 'Link Webex / Google Meet' : 'Địa chỉ văn phòng / phòng họp';
+    document.getElementById('meeting-location').placeholder = online ? 'https://meet.google.com/... hoặc link Webex' : 'VD: Văn phòng Q1 - Phòng họp A';
+}
+
+window.openMeetingModal = function (meetingId) {
+    editingMeetingId = meetingId || null;
+    const m = editingMeetingId ? window.monthlyMeetingsData[editingMeetingId] : null;
+    document.getElementById('meeting-modal-title').innerText = m ? 'Cập nhật lịch họp' : 'Thêm lịch họp';
+    document.getElementById('meeting-date').value = m?.date || `${currentDate.getFullYear()}-${(currentDate.getMonth() + 1).toString().padStart(2, '0')}-01`;
+    document.getElementById('meeting-start').value = m?.start || '09:00';
+    document.getElementById('meeting-end').value = m?.end || '10:00';
+    document.getElementById('meeting-mode').value = m?.mode || 'offline';
+    document.getElementById('meeting-title').value = m?.title || '';
+    document.getElementById('meeting-content').value = m?.content || '';
+    document.getElementById('meeting-location').value = m?.location || '';
+    document.getElementById('btn-delete-meeting').style.display = m ? 'inline-flex' : 'none';
+    updateMeetingLocationLabel();
+    document.getElementById('meeting-modal').classList.add('active');
+}
+
+function saveMeetingEdit() {
+    const date = document.getElementById('meeting-date').value;
+    const title = document.getElementById('meeting-title').value.trim();
+    if (!date || !title) return alert('Vui lòng nhập ngày họp và tiêu đề.');
+    const id = editingMeetingId || `meeting_${Date.now()}`;
+    const previousMeeting = editingMeetingId ? window.monthlyMeetingsData[editingMeetingId] : null;
+    if (previousMeeting && previousMeeting.date !== date && typeof window.deleteMeetingCalendarEvent === 'function') {
+        window.deleteMeetingCalendarEvent(previousMeeting);
+    }
+    window.monthlyMeetingsData[id] = {
+        id, date,
+        start: document.getElementById('meeting-start').value || '09:00',
+        end: document.getElementById('meeting-end').value || '10:00',
+        mode: document.getElementById('meeting-mode').value,
+        title,
+        content: document.getElementById('meeting-content').value.trim(),
+        location: document.getElementById('meeting-location').value.trim()
+    };
+    closeMeetingModal();
+    renderCalendar();
+    saveMeetingsToDrive();
+}
+
+function deleteMeetingEdit() {
+    if (!editingMeetingId) return;
+    const meeting = window.monthlyMeetingsData[editingMeetingId];
+    if (meeting && typeof window.deleteMeetingCalendarEvent === 'function') window.deleteMeetingCalendarEvent(meeting);
+    delete window.monthlyMeetingsData[editingMeetingId];
+    closeMeetingModal();
+    renderCalendar();
+    saveMeetingsToDrive();
+}
 /**
  * FIX QUAN TRỌNG:
  * 1. Trước đây gọi syncGoogleTask(key, dayData.task) - truyền 1 CHUỖI thay vì
@@ -265,14 +345,7 @@ async function syncToGoogleEcosystem() {
         // ----- 1. ĐỒNG BỘ GOOGLE CALENDAR -----
         if (!hasMainShift && !hasOT) {
             // Ngày nghỉ hoàn toàn, không OT -> xoá sự kiện lịch nếu có
-            if (typeof deleteCalendarEvent === 'function') await deleteCalendarEvent(key);
-        } else {
-            let shiftLabel = hasMainShift ? dayData.shift : `OT ${dayData.ot} (OFF)`;
-            let shiftTime = "08:00 - 17:00";
-
-            if (hasMainShift && window.portalSettings?.shifts) {
-                const conf = window.portalSettings.shifts.find(s => s.code === dayData.shift);
-                if (conf) shiftTime = conf.time;
+@@ -276,27 +388,31 @@ async function syncToGoogleEcosystem() {
             } else if (!hasMainShift && hasOT && window.portalSettings?.otShifts) {
                 // Ca chính OFF nhưng có tăng cường -> lấy giờ theo ca OT
                 const conf = window.portalSettings.otShifts.find(s => s.code === dayData.ot);
@@ -299,4 +372,9 @@ async function syncToGoogleEcosystem() {
         }
     }
     alert("✅ Đã đồng bộ Lịch và Task lên Google thành công!");
+    const meetingItems = Object.values(window.monthlyMeetingsData || {});
+    for (const meeting of meetingItems) {
+        if (typeof syncMeetingCalendarEvent === 'function') await syncMeetingCalendarEvent(meeting);
+    }
+    alert("✅ Đã đồng bộ Lịch, Task và Lịch họp lên Google thành công!");
 }
