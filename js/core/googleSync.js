@@ -44,6 +44,19 @@ let tokenClient;
 let gapiInited = false;
 let gisInited = false;
 let gapiLoadRequested = false; // tránh gọi gapi.load() nhiều lần trong lúc polling
+const GSYNC_START_TIME = Date.now();
+
+// Cập nhật dòng trạng thái dưới nút "Đăng nhập với Google" để người dùng thấy
+// tiến trình mà KHÔNG cần mở Console (F12) mới xem được lỗi.
+function setLoginStatus(text, isError) {
+    const el = document.getElementById('login-status');
+    if (el) {
+        el.innerText = text;
+        el.style.color = isError ? 'var(--danger, #ef4444)' : '';
+    }
+    if (isError) console.error('[G-Portal Auth]', text);
+    else console.log('[G-Portal Auth]', text);
+}
 
 // ============================================================
 // 0. POLLING: chờ 2 thư viện gapi + Google Identity Services sẵn sàng
@@ -52,14 +65,40 @@ let gapiLoadRequested = false; // tránh gọi gapi.load() nhiều lần trong l
 function waitForGoogleLibraries() {
     if (!gapiInited && window.gapi && !gapiLoadRequested) {
         gapiLoadRequested = true;
-        gapi.load('client', initializeGapiClient);
+        setLoginStatus('Đang khởi tạo Google API Client...');
+        gapi.load('client', {
+            callback: initializeGapiClient,
+            onerror: function () {
+                setLoginStatus('Lỗi: không tải được "gapi client". Có thể do AdBlock/tiện ích trình duyệt chặn apis.google.com — vui lòng tắt thử rồi tải lại trang.', true);
+                gapiLoadRequested = false; // cho phép thử lại
+            },
+            timeout: 10000,
+            ontimeout: function () {
+                setLoginStatus('Lỗi: tải "gapi client" quá thời gian chờ (mạng chậm hoặc bị chặn).', true);
+                gapiLoadRequested = false;
+            }
+        });
     }
     if (!gisInited && window.google && window.google.accounts && window.google.accounts.oauth2) {
         gisInited = true;
         checkAllReady();
     }
+
+    const elapsed = Date.now() - GSYNC_START_TIME;
     if (!gapiInited || !gisInited) {
+        // Sau 8 giây vẫn chưa xong -> báo rõ đang kẹt ở thư viện nào để dễ xử lý
+        if (elapsed > 8000 && elapsed < 8500) {
+            if (!window.gapi) {
+                setLoginStatus('Không thể tải thư viện "apis.google.com/js/api.js". Kiểm tra kết nối mạng, AdBlock, hoặc thử mở trang qua http(s):// thay vì mở trực tiếp file trên máy.', true);
+            } else if (!window.google || !window.google.accounts) {
+                setLoginStatus('Không thể tải thư viện "accounts.google.com/gsi/client". Kiểm tra kết nối mạng hoặc trình chặn quảng cáo.', true);
+            } else if (!gapiInited) {
+                setLoginStatus('gapi đã tải nhưng gapi.client chưa khởi tạo xong. Kiểm tra Console (F12) để xem lỗi chi tiết.', true);
+            }
+        }
         setTimeout(waitForGoogleLibraries, 150);
+    } else {
+        setLoginStatus('');
     }
 }
 waitForGoogleLibraries();
@@ -75,6 +114,7 @@ async function initializeGapiClient() {
         checkAllReady();
     } catch (e) {
         console.error("Lỗi khởi tạo GAPI:", e);
+        setLoginStatus('Lỗi khởi tạo gapi.client.init(): ' + (e && e.message ? e.message : JSON.stringify(e)) + ' — kiểm tra API_KEY / DISCOVERY_DOCS.', true);
         gapiLoadRequested = false; // cho phép thử lại ở vòng polling kế tiếp nếu lỗi
     }
 }
@@ -135,7 +175,12 @@ window.handleAuthClick = function () {
     if (tokenClient) {
         tokenClient.requestAccessToken({ prompt: 'consent' });
     } else {
-        alert("Hệ thống Google đang được kết nối, vui lòng chờ trong giây lát rồi thử lại (không cần F5).");
+        let reason = 'chưa rõ nguyên nhân — hãy xem dòng chữ đỏ phía dưới nút này hoặc mở Console (F12) để xem lỗi.';
+        if (!window.gapi) reason = 'thư viện apis.google.com/js/api.js chưa tải xong hoặc bị chặn.';
+        else if (!window.google || !window.google.accounts) reason = 'thư viện accounts.google.com/gsi/client chưa tải xong hoặc bị chặn.';
+        else if (!gapiInited) reason = 'gapi.client chưa khởi tạo xong (xem Console F12 để biết lỗi cụ thể).';
+        setLoginStatus('Chưa thể đăng nhập: ' + reason, true);
+        alert("Hệ thống Google chưa sẵn sàng: " + reason);
     }
 };
 
