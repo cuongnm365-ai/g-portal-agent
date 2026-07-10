@@ -35,7 +35,7 @@ window.GPORTAL_FOLDERS = FOLDER_IDS;
 const DISCOVERY_DOCS = [
     'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest',
     'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest',
-    'https://tasks.googleapis.com/$discovery/rest/v1'
+    'https://tasks.googleapis.com/$discovery/rest?version=v1'
 ];
 
 const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks';
