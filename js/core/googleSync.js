@@ -177,7 +177,7 @@ window.handleAuthClick = function () {
     } else {
         let reason = 'chưa rõ nguyên nhân — hãy xem dòng chữ đỏ phía dưới nút này hoặc mở Console (F12) để xem lỗi.';
         if (!window.gapi) reason = 'thư viện apis.google.com/js/api.js chưa tải xong hoặc bị chặn.';
-        else if (!window.google || !window.google.accounts) reason = 'thư viện accounts.google.com/gsi/client chưa tải xong hoặc bị chặn.';
+         else if (!window.google || !window.google.accounts) reason = 'thư viện accounts.google.com/gsi/client chưa tải xong hoặc bị chặn.';
         else if (!gapiInited) reason = 'gapi.client chưa khởi tạo xong (xem Console F12 để biết lỗi cụ thể).';
         setLoginStatus('Chưa thể đăng nhập: ' + reason, true);
         alert("Hệ thống Google chưa sẵn sàng: " + reason);
@@ -203,14 +203,22 @@ window.handleSignoutClick = function () {
 // ========================================================
 
 async function deleteCalendarEvent(dateStr) {
+function getConfiguredCalendarId(kind) {
+    const key = kind === 'meeting' ? 'gportal_meeting_calendar_id' : 'gportal_work_calendar_id';
+    return localStorage.getItem(key) || 'primary';
+}
+
+async function deleteCalendarEvent(dateStr, calendarId = getConfiguredCalendarId('work'), query = '[G-Portal Work]') {
     try {
         const minTime = `${dateStr}T00:00:00+07:00`;
         const maxTime = `${dateStr}T23:59:59+07:00`;
         let response = await gapi.client.calendar.events.list({
             'calendarId': 'primary',
+            'calendarId': calendarId,
             'timeMin': minTime,
             'timeMax': maxTime,
             'q': 'Ca:',
+            'q': query,
             'singleEvents': true
         });
 
@@ -219,6 +227,7 @@ async function deleteCalendarEvent(dateStr) {
             for (const ev of events) {
                 await gapi.client.calendar.events.delete({
                     'calendarId': 'primary',
+                    'calendarId': calendarId,
                     'eventId': ev.id
                 });
             }
@@ -233,6 +242,8 @@ window.syncCalendarEvent = async function (dateStr, shiftCode, shiftTime, descri
     if (!AppState.isLoggedIn || !gapi.client) return;
 
     await deleteCalendarEvent(dateStr);
+    const calendarId = getConfiguredCalendarId('work');
+    await deleteCalendarEvent(dateStr, calendarId, '[G-Portal Work]');
 
     let startTimeStr = "08:00:00";
     let endTimeStr = "17:00:00";
@@ -247,6 +258,7 @@ window.syncCalendarEvent = async function (dateStr, shiftCode, shiftTime, descri
 
     const event = {
         'summary': `Ca: ${shiftCode}`,
+        'summary': `[G-Portal Work] Ca: ${shiftCode}`,
         'description': description,
         'start': { 'dateTime': startDateTime, 'timeZone': 'Asia/Ho_Chi_Minh' },
         'end': { 'dateTime': endDateTime, 'timeZone': 'Asia/Ho_Chi_Minh' }
@@ -255,11 +267,42 @@ window.syncCalendarEvent = async function (dateStr, shiftCode, shiftTime, descri
     try {
         await gapi.client.calendar.events.insert({
             'calendarId': 'primary',
+            'calendarId': calendarId,
             'resource': event
         });
         console.log(`Đã đồng bộ Lịch ngày ${dateStr} thành công.`);
     } catch (err) {
         console.error("Lỗi đồng bộ Lịch: ", err);
+    }
+};
+
+
+window.deleteMeetingCalendarEvent = async function (meeting) {
+    if (!AppState.isLoggedIn || !gapi.client || !meeting) return;
+    await deleteCalendarEvent(meeting.date, getConfiguredCalendarId('meeting'), `[G-Portal Meeting] ${meeting.id}`);
+};
+
+window.syncMeetingCalendarEvent = async function (meeting) {
+    if (!AppState.isLoggedIn || !gapi.client || !meeting) return;
+    const calendarId = getConfiguredCalendarId('meeting');
+    await deleteCalendarEvent(meeting.date, calendarId, `[G-Portal Meeting] ${meeting.id}`);
+
+    const startDateTime = `${meeting.date}T${meeting.start || '09:00'}:00+07:00`;
+    const endDateTime = `${meeting.date}T${meeting.end || '10:00'}:00+07:00`;
+    const isOnline = meeting.mode === 'online';
+    const event = {
+        summary: `[G-Portal Meeting] ${meeting.id} ${meeting.title}`,
+        description: [meeting.content, isOnline ? `Link họp: ${meeting.location || ''}` : `Địa điểm: ${meeting.location || ''}`].filter(Boolean).join('\n'),
+        location: meeting.location || '',
+        start: { dateTime: startDateTime, timeZone: 'Asia/Ho_Chi_Minh' },
+        end: { dateTime: endDateTime, timeZone: 'Asia/Ho_Chi_Minh' }
+    };
+
+    try {
+        await gapi.client.calendar.events.insert({ calendarId, resource: event });
+        console.log(`Đã đồng bộ lịch họp ${meeting.id}.`);
+    } catch (err) {
+        console.error('Lỗi đồng bộ lịch họp:', err);
     }
 };
 
@@ -288,29 +331,3 @@ window.syncGoogleTask = async function (dateKey, taskName, notes) {
                 tasklist: '@default',
                 task: existing.id,
                 resource: { ...taskBody, id: existing.id }
-            });
-        } else {
-            await gapi.client.tasks.tasks.insert({
-                tasklist: '@default',
-                resource: taskBody
-            });
-        }
-        console.log(`Đã đồng bộ Task ngày ${dateKey} thành công.`);
-    } catch (err) {
-        console.error("Lỗi đồng bộ Task: ", err);
-    }
-};
-
-// Xoá Google Task của 1 ngày (khi PCCV bị gỡ khỏi ngày đó)
-window.deleteGoogleTask = async function (dateKey) {
-    if (!AppState.isLoggedIn || !gapi.client.tasks) return;
-    try {
-        const existing = await findGoogleTaskByDate(dateKey);
-        if (existing) {
-            await gapi.client.tasks.tasks.delete({ tasklist: '@default', task: existing.id });
-            console.log(`Đã xoá Task ngày ${dateKey}.`);
-        }
-    } catch (err) {
-        console.error("Lỗi xoá Task: ", err);
-    }
-};
