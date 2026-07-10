@@ -56,8 +56,6 @@ function initScheduleEvents() {
     document.getElementById('btn-save-meeting').addEventListener('click', saveMeetingEdit);
     document.getElementById('btn-delete-meeting').addEventListener('click', deleteMeetingEdit);
     document.getElementById('meeting-mode').addEventListener('change', updateMeetingLocationLabel);
-    document.getElementById('btn-save-calendar-ids').addEventListener('click', saveCalendarIds);
-    loadCalendarIds();
 }
 
 function closeDayModal() {
@@ -156,12 +154,12 @@ window.renderCalendar = function () {
         const meetings = getMeetingsByDate(dateKey);
         const shiftConfig = getShiftConfig(dayData.shift, false);
         const otConfig = getShiftConfig(dayData.ot, true);
-        const shiftColor = shiftConfig?.color || '#475569';
+        const shiftColor = shiftConfig && shiftConfig.color ? shiftConfig.color : '#475569';
         const dayStatus = dayData.shift && dayData.shift !== 'OFF' ? 'has-shift' : 'is-off';
 
         let tagsHtml = `<div class="day-topline"><span class="day-number">${day}</span><span class="day-status ${dayStatus}">${dayStatus === 'has-shift' ? 'Đi làm' : 'OFF'}</span></div>`;
-        if (dayData.shift && dayData.shift !== 'OFF') tagsHtml += `<div class="shift-card" style="--shift-color:${shiftColor}"><b>${escapeHtml(dayData.shift)}</b><span>${escapeHtml(shiftConfig?.time || 'Chưa cấu hình giờ')}</span></div>`;
-        if (dayData.ot) tagsHtml += `<div class="mini-pill ot"><i class='bx bx-trending-up'></i> OT ${escapeHtml(dayData.ot)}${otConfig?.time ? ` · ${escapeHtml(otConfig.time)}` : ''}</div>`;
+        if (dayData.shift && dayData.shift !== 'OFF') tagsHtml += `<div class="shift-card" style="--shift-color:${shiftColor}"><b>${escapeHtml(dayData.shift)}</b><span>${escapeHtml(shiftConfig && shiftConfig.time ? shiftConfig.time : 'Chưa cấu hình giờ')}</span></div>`;
+        if (dayData.ot) tagsHtml += `<div class="mini-pill ot"><i class='bx bx-trending-up'></i> OT ${escapeHtml(dayData.ot)}${otConfig && otConfig.time ? ` · ${escapeHtml(otConfig.time)}` : ''}</div>`;
         if (dayData.task) tagsHtml += `<div class="mini-pill task"><i class='bx bx-check-square'></i> ${escapeHtml(dayData.task)}</div>`;
         if (dayData.type === 'doica' && dayData.trade) tagsHtml += `<div class="mini-pill trade"><i class='bx bx-transfer'></i> Đổi: ${escapeHtml(dayData.trade)}</div>`;
         if (dayData.type === 'trucho' && dayData.help) tagsHtml += `<div class="mini-pill help"><i class='bx bx-support'></i> Hộ: ${escapeHtml(dayData.help)}</div>`;
@@ -174,6 +172,7 @@ window.renderCalendar = function () {
 }
 
 function openDayModal(dateKey) {
+window.openDayModal = function (dateKey) {
     editingDateKey = dateKey;
     const dayData = window.monthlyScheduleData[dateKey] || { type: 'chinhchu', shift: 'OFF', ot: '', task: '', trade: '', help: '' };
 
@@ -196,7 +195,10 @@ function openDayModal(dateKey) {
         const staffOptions = `<option value="">-- Không có --</option>` +
             (window.portalSettings.staffs || []).map(s => `<option value="${s.name}">${s.name} (${s.id})</option>`).join('');
         document.getElementById('modal-trade').innerHTML = staffOptions;
-@@ -218,50 +232,148 @@ function handleExcelUpload(event) {
+        document.getElementById('modal-help').innerHTML = staffOptions;
+    }
+
+@@ -218,85 +230,177 @@ function handleExcelUpload(event) {
             alert("Import Lịch thành công!");
             renderCalendar(); saveScheduleToDrive();
         } catch (err) {
@@ -250,16 +252,6 @@ function renderScheduleAgenda() {
     meetingAgenda.innerHTML = meetings.length ? meetings.map(m => `<button class="agenda-item meeting" onclick="openMeetingModal('${m.id}')"><b>${m.date.slice(8,10)}/${m.date.slice(5,7)} · ${escapeHtml(m.start)}</b><span>${escapeHtml(m.title)}</span><small>${m.mode === 'online' ? 'Online' : 'Offline'} · ${escapeHtml(m.location)}</small></button>`).join('') : '<div class="empty-agenda">Chưa có lịch họp trong tháng.</div>';
 }
 
-function loadCalendarIds() {
-    document.getElementById('work-calendar-id').value = localStorage.getItem('gportal_work_calendar_id') || 'primary';
-    document.getElementById('meeting-calendar-id').value = localStorage.getItem('gportal_meeting_calendar_id') || 'primary';
-}
-
-function saveCalendarIds() {
-    localStorage.setItem('gportal_work_calendar_id', document.getElementById('work-calendar-id').value.trim() || 'primary');
-    localStorage.setItem('gportal_meeting_calendar_id', document.getElementById('meeting-calendar-id').value.trim() || 'primary');
-    alert('Đã lưu Google Calendar ID.');
-}
 
 function closeMeetingModal() {
     document.getElementById('meeting-modal').classList.remove('active');
@@ -276,13 +268,13 @@ window.openMeetingModal = function (meetingId) {
     editingMeetingId = meetingId || null;
     const m = editingMeetingId ? window.monthlyMeetingsData[editingMeetingId] : null;
     document.getElementById('meeting-modal-title').innerText = m ? 'Cập nhật lịch họp' : 'Thêm lịch họp';
-    document.getElementById('meeting-date').value = m?.date || `${currentDate.getFullYear()}-${(currentDate.getMonth() + 1).toString().padStart(2, '0')}-01`;
-    document.getElementById('meeting-start').value = m?.start || '09:00';
-    document.getElementById('meeting-end').value = m?.end || '10:00';
-    document.getElementById('meeting-mode').value = m?.mode || 'offline';
-    document.getElementById('meeting-title').value = m?.title || '';
-    document.getElementById('meeting-content').value = m?.content || '';
-    document.getElementById('meeting-location').value = m?.location || '';
+    document.getElementById('meeting-date').value = m && m.date ? m.date : `${currentDate.getFullYear()}-${(currentDate.getMonth() + 1).toString().padStart(2, '0')}-01`;
+    document.getElementById('meeting-start').value = m && m.start ? m.start : '09:00';
+    document.getElementById('meeting-end').value = m && m.end ? m.end : '10:00';
+    document.getElementById('meeting-mode').value = m && m.mode ? m.mode : 'offline';
+    document.getElementById('meeting-title').value = m && m.title ? m.title : '';
+    document.getElementById('meeting-content').value = m && m.content ? m.content : '';
+    document.getElementById('meeting-location').value = m && m.location ? m.location : '';
     document.getElementById('btn-delete-meeting').style.display = m ? 'inline-flex' : 'none';
     updateMeetingLocationLabel();
     document.getElementById('meeting-modal').classList.add('active');
@@ -345,8 +337,17 @@ async function syncToGoogleEcosystem() {
         // ----- 1. ĐỒNG BỘ GOOGLE CALENDAR -----
         if (!hasMainShift && !hasOT) {
             // Ngày nghỉ hoàn toàn, không OT -> xoá sự kiện lịch nếu có
-@@ -276,27 +388,31 @@ async function syncToGoogleEcosystem() {
+            if (typeof deleteCalendarEvent === 'function') await deleteCalendarEvent(key);
+        } else {
+            let shiftLabel = hasMainShift ? dayData.shift : `OT ${dayData.ot} (OFF)`;
+            let shiftTime = "08:00 - 17:00";
+
+            if (hasMainShift && window.portalSettings?.shifts) {
+            if (hasMainShift && window.portalSettings && window.portalSettings.shifts) {
+                const conf = window.portalSettings.shifts.find(s => s.code === dayData.shift);
+                if (conf) shiftTime = conf.time;
             } else if (!hasMainShift && hasOT && window.portalSettings?.otShifts) {
+            } else if (!hasMainShift && hasOT && window.portalSettings && window.portalSettings.otShifts) {
                 // Ca chính OFF nhưng có tăng cường -> lấy giờ theo ca OT
                 const conf = window.portalSettings.otShifts.find(s => s.code === dayData.ot);
                 if (conf) shiftTime = conf.time;
@@ -377,4 +378,4 @@ async function syncToGoogleEcosystem() {
         if (typeof syncMeetingCalendarEvent === 'function') await syncMeetingCalendarEvent(meeting);
     }
     alert("✅ Đã đồng bộ Lịch, Task và Lịch họp lên Google thành công!");
-}
+    }
