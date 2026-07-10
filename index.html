@@ -177,12 +177,29 @@
                             <button id="btn-download-schedule-tpl" class="btn-primary" style="background: #2563eb;"><i class='bx bx-download'></i> File Mẫu</button>
                             <input type="file" id="excel-upload" accept=".xlsx, .xls" style="display: none;">
                             <label for="excel-upload" class="btn-primary" style="background: var(--accent-2);"><i class='bx bx-upload'></i> Import Lịch</label>
+                            <button id="btn-add-meeting" class="btn-primary" style="background: #7c3aed;"><i class='bx bx-video-plus'></i> Thêm họp</button>
                             <button id="btn-sync-calendar" class="btn-primary" style="background: var(--warning);"><i class='bx bx-sync'></i> Đồng bộ Google</button>
                         </div>
                     </div>
                     <div class="calendar-container ai-card">
                         <div class="calendar-header-days"><div>CN</div><div>T2</div><div>T3</div><div>T4</div><div>T5</div><div>T6</div><div>T7</div></div>
                         <div id="calendar-grid" class="calendar-grid"></div>
+                    <div class="schedule-google-config ai-card">
+                        <div class="config-field"><label>Google Calendar ID - Lịch làm việc</label><input id="work-calendar-id" class="form-input" placeholder="primary hoặc ID lịch làm việc"></div>
+                        <div class="config-field"><label>Google Calendar ID - Lịch họp</label><input id="meeting-calendar-id" class="form-input" placeholder="primary hoặc ID lịch họp"></div>
+                        <button id="btn-save-calendar-ids" class="btn-ghost"><i class='bx bx-save'></i> Lưu ID</button>
+                    </div>
+                    <div class="schedule-layout">
+                        <div class="calendar-container ai-card">
+                            <div class="calendar-header-days"><div>CN</div><div>T2</div><div>T3</div><div>T4</div><div>T5</div><div>T6</div><div>T7</div></div>
+                            <div id="calendar-grid" class="calendar-grid"></div>
+                        </div>
+                        <aside class="schedule-side ai-card">
+                            <div class="side-head"><span><i class='bx bx-briefcase-alt-2'></i> Phân công tháng</span><b id="schedule-task-count">0</b></div>
+                            <div id="schedule-agenda" class="schedule-agenda"></div>
+                            <div class="side-head meeting-head"><span><i class='bx bx-video'></i> Lịch họp tháng</span><b id="meeting-count">0</b></div>
+                            <div id="meeting-agenda" class="schedule-agenda"></div>
+                        </aside>
                     </div>
                 </section>
 
@@ -208,111 +225,7 @@
                                     <div class="input-group-col"><label>SA Thông tin</label><input type="number" id="call-sa-info" class="form-input prod-input" value="0" min="0"></div>
                                     <div class="input-group-col"><label>SA Kỹ thuật</label><input type="number" id="call-sa-tech" class="form-input prod-input" value="0" min="0"></div>
                                 </div>
-                                <div class="total-box" style="margin-top: 20px; padding: 15px; background: var(--accent-glow); border-radius: 10px; text-align: center; border: 1px solid var(--accent-muted);">
-                                    <span style="font-size: 13px; color: var(--text-main);">Tổng Cuộc Gọi Hợp Lệ</span>
-                                    <div id="prod-total" style="font-size: 34px; font-weight: bold; color: var(--accent); font-family: 'Orbitron', sans-serif;">0</div>
-                                    <span id="prod-formula-hint" style="font-size: 11px; color: var(--text-muted); display:block; margin-top:4px;"></span>
-                                </div>
-                            </div>
-                            <div class="settings-col">
-                                <h4 style="margin-bottom: 15px; color: var(--warning); font-size:14px;">Chấm công / Vi phạm</h4>
-                                <div class="input-group-col" style="margin-bottom: 15px;"><label>Đi trễ (hh:mm:ss)</label><input type="text" id="time-late" class="form-input" placeholder="00:00:00"></div>
-                                <div class="input-group-col"><label>Về sớm (hh:mm:ss)</label><input type="text" id="time-early" class="form-input" placeholder="00:00:00"></div>
-                                <div style="margin-top: 45px; text-align: right;"><button id="btn-save-prod" class="btn-primary" style="width: 100%; justify-content: center; padding: 15px; font-size: 15px;"><i class='bx bx-save'></i> Lưu Năng suất</button></div>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- ============ CÀI ĐẶT ============ -->
-                <section id="view-settings" class="app-view">
-                    <div class="settings-grid">
-                        <div class="settings-col">
-                            <div class="ai-card">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                                    <h3 style="margin: 0; font-size:15px;"><i class='bx bx-time-five'></i> Ca làm việc</h3>
-                                    <div style="display: flex; gap: 5px;">
-                                        <button id="btn-tpl-shift" class="btn-icon" title="Tải file mẫu"><i class='bx bx-download'></i></button>
-                                        <label for="import-shift" class="btn-icon" title="Import Excel" style="margin:0;"><i class='bx bx-upload'></i></label>
-                                        <input type="file" id="import-shift" accept=".xlsx, .xls" style="display: none;">
-                                    </div>
-                                </div>
-                                <div class="input-group">
-                                    <input type="text" id="shift-code" placeholder="Mã Ca" style="max-width:80px;">
-                                    <input type="text" id="shift-name" placeholder="Tên ca (tuỳ chọn)">
-                                    <input type="text" id="shift-time" placeholder="07:15 - 14:45">
-                                    <button id="btn-add-shift" class="btn-primary"><i class='bx bx-plus'></i></button>
-                                </div>
-                                <ul id="shift-list" class="data-list"></ul>
-                            </div>
-
-                            <div class="ai-card" style="margin-top: 20px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                                    <h3 style="margin: 0; font-size:15px;"><i class='bx bx-trending-up'></i> Ca tăng cường (OT)</h3>
-                                    <div style="display: flex; gap: 5px;">
-                                        <button id="btn-tpl-otshift" class="btn-icon" title="Tải file mẫu"><i class='bx bx-download'></i></button>
-                                        <label for="import-otshift" class="btn-icon" title="Import Excel" style="margin:0;"><i class='bx bx-upload'></i></label>
-                                        <input type="file" id="import-otshift" accept=".xlsx, .xls" style="display: none;">
-                                    </div>
-                                </div>
-                                <div class="input-group">
-                                    <input type="text" id="otshift-code" placeholder="Mã (vd S+)" style="max-width:80px;">
-                                    <input type="text" id="otshift-name" placeholder="Tên ca (tuỳ chọn)">
-                                    <input type="text" id="otshift-time" placeholder="14:45 - 18:00">
-                                    <button id="btn-add-otshift" class="btn-primary"><i class='bx bx-plus'></i></button>
-                                </div>
-                                <ul id="otshift-list" class="data-list"></ul>
-                            </div>
-
-                            <div class="ai-card" style="margin-top: 20px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                                    <h3 style="margin: 0; font-size:15px;"><i class='bx bx-task'></i> Phân công công việc (PCCV)</h3>
-                                    <div style="display: flex; gap: 5px;">
-                                        <button id="btn-tpl-task" class="btn-icon" title="Tải file mẫu"><i class='bx bx-download'></i></button>
-                                        <label for="import-task" class="btn-icon" title="Import Excel" style="margin:0;"><i class='bx bx-upload'></i></label>
-                                        <input type="file" id="import-task" accept=".xlsx, .xls" style="display: none;">
-                                    </div>
-                                </div>
-                                <div class="input-group"><input type="text" id="task-code" placeholder="Mã" style="max-width:80px;"><input type="text" id="task-name" placeholder="Tên PCCV"><button id="btn-add-task" class="btn-primary"><i class='bx bx-plus'></i></button></div>
-                                <ul id="task-list" class="data-list"></ul>
-                            </div>
-                        </div>
-
-                        <div class="settings-col">
-                            <div class="ai-card">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                                    <h3 style="margin: 0; font-size:15px;"><i class='bx bx-group'></i> Nhân sự</h3>
-                                    <div style="display: flex; gap: 5px;">
-                                        <button id="btn-tpl-staff" class="btn-icon" title="Tải file mẫu"><i class='bx bx-download'></i></button>
-                                        <label for="import-staff" class="btn-icon" title="Import Excel" style="margin:0;"><i class='bx bx-upload'></i></label>
-                                        <input type="file" id="import-staff" accept=".xlsx, .xls" style="display: none;">
-                                    </div>
-                                </div>
-                                <div class="input-group"><input type="text" id="staff-id" placeholder="Mã NV"><input type="text" id="staff-name" placeholder="Họ và Tên"><button id="btn-add-staff" class="btn-primary"><i class='bx bx-plus'></i></button></div>
-                                <ul id="staff-list" class="data-list"></ul>
-                            </div>
-
-                            <div class="ai-card" style="margin-top: 20px;">
-                                <h3 style="font-size:15px;"><i class='bx bx-calculator'></i> Tham số KPI &amp; Công thức</h3>
-                                <div class="input-group" style="margin-bottom: 10px; margin-top:14px;"><label style="width: 190px;">Hệ số SA (Thông tin+Kỹ thuật):</label><input type="number" id="sa-modifier" class="form-input" value="3" min="1" step="0.1"></div>
-                                <div class="input-group" style="margin-bottom: 10px;"><label style="width: 190px;">Mục tiêu KPI / tháng:</label><input type="number" id="kpi-target" class="form-input" value="2000" min="0"></div>
-                                <div class="input-group"><label style="width: 190px;">Hệ số quy đổi 1 ngày OT → công:</label><input type="number" id="coeff-ot-cong" class="form-input" value="0.5" min="0" step="0.1"></div>
-                                <div style="text-align: right; margin-top:8px;"><button id="btn-save-coeff" class="btn-primary">Lưu Tham Số</button></div>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-            </div>
-        </main>
-    </div>
-
-    <!-- ===================== MODAL HIỆU CHỈNH CA ===================== -->
-    <div id="day-modal" class="modal-overlay">
-        <div class="modal-content ai-card">
-            <div class="modal-header"><h3 id="modal-date-title">--/--/----</h3><button class="btn-close-modal" id="btn-close-modal" type="button"><i class='bx bx-x'></i></button></div>
-            <div class="modal-body">
-                <div class="modal-preview" id="modal-preview">Chưa có dữ liệu</div>
-
+@@ -316,50 +330,72 @@
                 <div class="input-group">
                     <label style="width:110px;">Phân loại ca:</label>
                     <select id="modal-shift-type" class="form-select">
@@ -338,6 +251,28 @@
         </div>
     </div>
 
+    <!-- ===================== MODAL LỊCH HỌP ===================== -->
+    <div id="meeting-modal" class="modal-overlay">
+        <div class="modal-content ai-card meeting-modal-content">
+            <div class="modal-header"><h3 id="meeting-modal-title">Thêm lịch họp</h3><button class="btn-close-modal" id="btn-close-meeting-modal" type="button"><i class='bx bx-x'></i></button></div>
+            <div class="modal-body">
+                <div class="meeting-form-grid">
+                    <div class="input-group-col"><label>Ngày họp</label><input type="date" id="meeting-date" class="form-input"></div>
+                    <div class="input-group-col"><label>Bắt đầu</label><input type="time" id="meeting-start" class="form-input" value="09:00"></div>
+                    <div class="input-group-col"><label>Kết thúc</label><input type="time" id="meeting-end" class="form-input" value="10:00"></div>
+                    <div class="input-group-col"><label>Hình thức</label><select id="meeting-mode" class="form-select"><option value="offline">Offline</option><option value="online">Online</option></select></div>
+                </div>
+                <div class="input-group-col"><label>Tiêu đề</label><input type="text" id="meeting-title" class="form-input" placeholder="VD: Họp giao ban tuần"></div>
+                <div class="input-group-col"><label>Nội dung</label><textarea id="meeting-content" class="form-input" rows="4" placeholder="Nội dung / agenda cuộc họp"></textarea></div>
+                <div class="input-group-col"><label id="meeting-location-label">Địa điểm / phòng họp</label><input type="text" id="meeting-location" class="form-input" placeholder="VD: Văn phòng Q1 - Phòng họp A"></div>
+            </div>
+            <div class="modal-footer meeting-footer">
+                <button id="btn-delete-meeting" class="btn-ghost danger" type="button"><i class='bx bx-trash'></i> Xóa</button>
+                <button id="btn-save-meeting" class="btn-primary" type="button"><i class='bx bx-save'></i> Lưu lịch họp</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ===================== LIBRARIES & EXTERNAL SCRIPTS ===================== -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -349,18 +284,11 @@
     -->
     <script async src="https://apis.google.com/js/api.js"></script>
     <script async src="https://accounts.google.com/gsi/client"></script>
-
     <script src="js/core/app.js"></script>
-
     <script src="js/core/googleSync.js"></script>
-
-    <script src="js/core/auth.js"></script>
-
     <script src="js/core/drive.js"></script>
-
     <script src="js/modules/settings/settings.js"></script>
     <script src="js/modules/schedule/schedule.js"></script>
     <script src="js/modules/productivity/productivity.js"></script>
     <script src="js/modules/dashboard/dashboard.js"></script>
 </body>
-</html>
