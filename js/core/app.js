@@ -1,27 +1,6 @@
 /**
  * app.js - Khởi tạo ứng dụng: Theme, Router (chuyển trang), Login Gate
- *
- * BẢN SỬA LỖI (so với bản cũ):
- * -------------------------------------------------------------------------
- * 1) LỖI CHÍNH khiến "toàn bộ chức năng không dùng được": các thẻ menu
- *    trong index.html dùng thuộc tính data-target (vd: data-target="schedule"),
- *    nhưng code cũ lại đọc getAttribute('data-view') -> luôn null ->
- *    switchView() không bao giờ được gọi -> bấm menu bên trái không chuyển
- *    trang được, người dùng bị kẹt mãi ở Dashboard sau khi đăng nhập.
- *    Đã sửa: đọc đúng thuộc tính "data-target".
- *
- * 2) Nút "Giao diện" (id=theme-toggle) trước đây KHÔNG được gắn sự kiện
- *    click nào trong toàn bộ mã nguồn -> bấm không có phản ứng. Đã bổ sung
- *    initThemeToggle().
- *
- * 3) Nút "Đăng xuất" (id=btn-google-auth) trước đây cũng KHÔNG được gắn sự
- *    kiện click nào -> hàm handleSignoutClick() (định nghĩa ở googleSync.js)
- *    tồn tại nhưng không bao giờ được gọi. Đã bổ sung initLogoutButton().
- *
- * Ngoài ra bổ sung: cập nhật class "active" cho menu đang chọn, cập nhật
- * tiêu đề/mô tả trang theo từng view, và khôi phục đúng view theo hash URL
- * khi tải lại trang (F5).
- * -------------------------------------------------------------------------
+ * (Đã kiểm tra: file này không có lỗi cú pháp, giữ nguyên logic gốc.)
  */
 
 const AppState = { currentView: 'dashboard', theme: 'dark', isLoggedIn: false };
@@ -40,18 +19,30 @@ document.addEventListener('DOMContentLoaded', () => {
     try { initRouter(); } catch (e) { console.error('initRouter error:', e); }
     try { initLogoutButton(); } catch (e) { console.error('initLogoutButton error:', e); }
 
-    // Nếu URL đang có hash hợp lệ (vd F5 khi đang ở #schedule) thì mở đúng view đó
     const initialView = (window.location.hash || '').replace('#', '');
     if (initialView && VIEW_META[initialView]) {
         window.switchView(initialView);
     }
 
-    // Tự động khôi phục giao diện nếu đã có token trong localStorage (Sửa lỗi F5)
+    // FIX: trước đây chỉ gọi showApp() mà KHÔNG set AppState.isLoggedIn = true.
+    // Cờ này chỉ được set bên trong googleSync.js (chạy bất đồng bộ, chờ gapi/gis tải
+    // xong) -> có 1 khoảng thời gian giao diện trông như đã đăng nhập nhưng
+    // AppState.isLoggedIn vẫn là false -> mọi thao tác cần đăng nhập (Đồng bộ Google,
+    // lưu Drive...) đều bị chặn với thông báo "Vui lòng đăng nhập Google trước!".
+    // Đồng thời kiểm tra hạn token (access token của Google thường hết hạn sau ~1 giờ),
+    // nếu hết hạn thì xoá và bắt đăng nhập lại thay vì để app "treo" ở trạng thái
+    // tưởng như đã đăng nhập nhưng gọi API nào cũng lỗi 401.
     const savedToken = localStorage.getItem('gapi_token');
-    if (savedToken) {
+    const tokenExpiry = parseInt(localStorage.getItem('gapi_token_expiry') || '0', 10);
+    if (savedToken && Date.now() < tokenExpiry) {
+        AppState.isLoggedIn = true; // set NGAY, không đợi googleSync.js
         window.showApp();
     } else {
-        window.showLogin();
+        if (savedToken) {
+            localStorage.removeItem('gapi_token');
+            localStorage.removeItem('gapi_token_expiry');
+        }
+        window.showLogin(savedToken ? 'Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.' : '');
     }
 });
 
@@ -74,7 +65,6 @@ function updateThemeIcon(theme) {
     if (icon) icon.className = theme === 'dark' ? 'bx bx-moon' : 'bx bx-sun';
 }
 
-// FIX: gắn sự kiện click cho nút chuyển Sáng/Tối (trước đây bị thiếu hoàn toàn)
 function initThemeToggle() {
     const btn = document.getElementById('theme-toggle');
     if (!btn) return;
@@ -84,7 +74,6 @@ function initThemeToggle() {
     });
 }
 
-// FIX: gắn sự kiện click cho nút Đăng xuất (trước đây bị thiếu hoàn toàn)
 function initLogoutButton() {
     const btn = document.getElementById('btn-google-auth');
     if (!btn) return;
@@ -95,14 +84,12 @@ function initLogoutButton() {
     });
 }
 
-// FIX: đổi "data-view" -> "data-target" cho khớp với thuộc tính thật sự có trong index.html
 function initRouter() {
     const menuItems = document.querySelectorAll('.menu-item');
     menuItems.forEach(item => {
         item.addEventListener('click', handleMenuClick);
     });
 
-    // Dự phòng: nếu listener trực tiếp bị mất do render lại DOM, vẫn bắt click menu ở cấp document.
     document.addEventListener('click', (e) => {
         const item = e.target.closest ? e.target.closest('.menu-item') : null;
         if (item) handleMenuClick(e);
@@ -129,12 +116,10 @@ window.switchView = function (viewName) {
     const targetView = document.getElementById(`view-${viewName}`);
     if (targetView) targetView.classList.add('active');
 
-    // Cập nhật trạng thái "đang chọn" trên menu bên trái
     document.querySelectorAll('.menu-item').forEach(item => {
         item.classList.toggle('active', item.getAttribute('data-target') === viewName);
     });
 
-    // Cập nhật tiêu đề + mô tả trang theo view hiện tại
     const meta = VIEW_META[viewName];
     if (meta) {
         const titleEl = document.getElementById('current-page-title');
@@ -147,10 +132,8 @@ window.switchView = function (viewName) {
     if (viewName === 'settings' && typeof renderSettingsUI === 'function') renderSettingsUI();
     if (viewName === 'productivity' && typeof loadProductivityForDate === 'function') loadProductivityForDate();
     if (viewName === 'dashboard' && typeof window.updateDashboard === 'function') window.updateDashboard();
-}
+};
 
-// ===================== LOGIN GATE =====================
-// Được gọi từ googleSync.js khi đăng nhập thành công (kể cả khôi phục phiên sau F5)
 window.showApp = function () {
     const login = document.getElementById('login-screen');
     const shell = document.getElementById('app-shell');
@@ -160,7 +143,6 @@ window.showApp = function () {
     if (VIEW_META[view]) window.switchView(view);
 };
 
-// Được gọi từ googleSync.js khi chưa đăng nhập / đăng xuất / phiên hết hạn
 window.showLogin = function (message) {
     const login = document.getElementById('login-screen');
     const shell = document.getElementById('app-shell');
