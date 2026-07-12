@@ -396,26 +396,33 @@
     <script src="js/modules/productivity/productivity.js"></script>
     <script src="js/modules/dashboard/dashboard.js"></script>
 
-      <script>
-      !(function () {
-        const livechatUrl = 'https://portal-sop.fpt.vn/livechat-service/widget.css';
-        document
-          .getElementsByTagName("head")[0]
-          .insertAdjacentHTML(
-            "beforeend",
-            `<link rel='stylesheet' href=${livechatUrl} />`
-          );
-        const e = document.createElement("div");
-        e.setAttribute("id", "livechat-sop"), document.body.appendChild(e);
-        localStorage.setItem('sop_id', '3364');
-        const t = document.createElement("script");
-        t.setAttribute("type", "module"),
-          t.setAttribute("crossorigin", ""),
-          (t.src = "https://portal-sop.fpt.vn/livechat-service/Widget.js"),
-          document.body.appendChild(t);
-      })();
-    </script>
-
+    <link rel="stylesheet" href="https://www.gstatic.com/dialogflow-console/fast/df-messenger/prod/v1/themes/df-messenger-default.css">
+<script src="https://www.gstatic.com/dialogflow-console/fast/df-messenger/prod/v1/df-messenger.js"></script>
+<df-messenger
+  oauth-client-id="INSERT_OAUTH_CLIENT_ID"
+  access-token-name="INSERT_ACCESS_TOKEN_NAME"
+  project-id="g-portal-agent"
+  agent-id="91c9f7fb-75ef-4861-b8d5-a1fe72b9c89d"
+  language-code="vi"
+  max-query-length="-1">
+  <df-messenger-chat-bubble
+    chat-title="Tra Cứu Danh Bạ"
+    chat-title-icon="https://tools.manhcuongit.online/Images/Logo/logo-fpt.png">
+  </df-messenger-chat-bubble>
+</df-messenger>
+<style>
+  df-messenger {
+    z-index: 999;
+    position: fixed;
+    --df-messenger-font-color: #000;
+    --df-messenger-font-family: Google Sans;
+    --df-messenger-chat-background: #F5F7FA;
+    --df-messenger-message-user-background: #E3ECF5;
+    --df-messenger-message-bot-background: #FFFFFF;
+    bottom: 16px;
+    right: 16px;
+  }
+</style>
     
 </body>
 </html>
