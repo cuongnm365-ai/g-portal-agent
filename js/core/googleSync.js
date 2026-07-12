@@ -34,8 +34,8 @@
  * -------------------------------------------------------------------------
  */
 
-const CLIENT_ID = '764929266866-62ua4ratuu6jimphrullociovmcdmkq9.apps.googleusercontent.com';
-const API_KEY = 'AIzaSyChHKJeaAnGQ5cVoSeqQQ8R-BgPK2DLv2Y';
+const CLIENT_ID = '714398035986-2jdd33n4h7kguauq73jbirq6rlfpkte2.apps.googleusercontent.com';
+const API_KEY = 'AIzaSyB4w3xAGA3-QiYZBIltPcetBHkKCpY0Oec';
 const FOLDER_IDS = {
     settings: '1j5-DPSFeUSmeDYxbR7fW0zJdlf-P2efp',
     staffs: '1eNvquq7MhTfTDn1vwm7D7mEpORkTe5kQ',
