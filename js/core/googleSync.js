@@ -1,37 +1,54 @@
 /**
  * googleSync.js - Google Auth + Drive + Calendar + Tasks
  *
- * BẢN SỬA LỖI ĐĂNG NHẬP (quan trọng):
+ * BẢN SỬA LỖI NGÀY 12/07 (mới nhất — 3 vấn đề được yêu cầu sửa):
  * -------------------------------------------------------------------------
- * TRƯỚC ĐÂY: dùng onload="gapiLoaded()" / onload="gisLoaded()" ngay trên thẻ
- * <script async defer ...> trong index.html. Vì các script này có "async",
- * trình duyệt tải chúng song song không theo thứ tự cố định. Thư viện
- * "gsi/client" rất nhẹ nên gần như luôn tải xong TRƯỚC KHI file này
- * (googleSync.js - nơi định nghĩa gapiLoaded/gisLoaded) được tải và chạy
- * xong. Khi đó onload gọi một hàm CHƯA TỒN TẠI -> lỗi bị nuốt âm thầm ->
- * gapiInited/gisInited không bao giờ cùng true -> tokenClient luôn
- * undefined -> bấm "Đăng nhập với Google" luôn rơi vào alert cảnh báo
- * "Hệ thống Google đang được kết nối...".
+ * 1) "Tắt tab ~10 phút quay lại phải đăng nhập lại":
+ *    - Trước đây token chỉ được lưu 1 lần lúc đăng nhập và không có cơ chế
+ *      LÀM MỚI trước khi hết hạn. Access token của Google (GIS) chỉ sống
+ *      khoảng 1 giờ và KHÔNG có refresh token ở luồng này, nên càng dùng
+ *      lâu càng dễ rơi vào trạng thái "hết hạn" bất ngờ giữa chừng.
+ *    - Đã bổ sung scheduleTokenRefresh(): tự động gọi lại
+ *      tokenClient.requestAccessToken({prompt:''}) NGẦM (không hiện popup
+ *      nếu trình duyệt vẫn còn phiên Google hợp lệ) 5 phút TRƯỚC khi token
+ *      hết hạn, để phiên đăng nhập được "gia hạn" liên tục trong lúc đang
+ *      mở app.
+ *    - Khi mở lại tab sau một thời gian và token đã hết hạn: thay vì bắt
+ *      đăng nhập lại ngay, hệ thống tự thử "đăng nhập ngầm"
+ *      (prompt:'') một lần — nếu trình duyệt vẫn còn cookie phiên Google
+ *      hợp lệ (chưa đăng xuất Google, chưa xoá cookie) thì sẽ vào thẳng
+ *      ứng dụng mà KHÔNG cần bấm nút. Nếu thất bại, mới hiện màn hình
+ *      đăng nhập như bình thường.
+ *    - Nút "Đăng nhập với Google" cũng đổi từ prompt:'consent' (luôn ép
+ *      hiện màn hình xin quyền) sang prompt:'' (chỉ hiện khi thật sự cần),
+ *      giúp các lần đăng nhập lại sau này nhanh hơn.
  *
- * CÁCH SỬA: bỏ hẳn onload trên thẻ <script> (xem index.html), thay bằng
- * vòng lặp kiểm tra (polling) window.gapi / window.google.accounts đã sẵn
- * sàng hay chưa. Cách này không phụ thuộc thứ tự tải file nên luôn chạy
- * đúng, kể cả khi mạng chậm/nhanh thất thường.
+ * 2) Thêm chức năng XÓA LỊCH của 1 ngày (nút trong modal hiệu chỉnh ngày,
+ *    xem js/modules/schedule/schedule.js) — khi xoá, phải xoá đồng bộ cả
+ *    sự kiện Google Calendar LẪN Google Task tương ứng của ngày đó, không
+ *    chỉ xoá dữ liệu trong app. Các hàm deleteWorkCalendarEvent() và
+ *    deleteGoogleTask() đã có sẵn từ trước, được tái sử dụng ở đây, nhưng
+ *    cơ chế xác định "đây là sự kiện của G-Portal" đã đổi sang cách đáng
+ *    tin cậy hơn (xem mục 3 bên dưới).
  *
- * BẢN SỬA LỖI NGÀY 11/07 (quan trọng - lỗi khiến CẢ FILE không chạy được):
- * - WORK_CALENDAR_ID / MEETING_CALENDAR_ID trước đó bị khai báo `const` 2
- *   LẦN trong cùng 1 file -> trình duyệt báo "Identifier has already been
- *   declared" (SyntaxError) NGAY KHI PARSE FILE -> toàn bộ file này (kể cả
- *   handleAuthClick, syncCalendarEvent...) coi như KHÔNG TỒN TẠI -> nút
- *   Đăng nhập Google và mọi tính năng đồng bộ đều chết cứng.
- * - Hàm deleteCalendarEvent cũng bị khai báo trùng 2 lần (2 chữ ký khác
- *   nhau) -> lỗi tương tự.
- * - Object gửi lên Calendar API bị lặp nhiều key giống nhau (calendarId,
- *   summary...) trong cùng 1 object literal.
- * - File bị cắt cụt giữa hàm syncGoogleTask (thiếu nhánh tạo Task mới) và
- *   thiếu hẳn hàm deleteGoogleTask dù schedule.js có gọi tới.
- * Toàn bộ các lỗi trên đã được gộp lại và sửa dứt điểm trong file này.
+ * 3) Đổi định dạng tên sự kiện & Task cho khớp với hệ thống chấm công:
+ *    - Trước đây: summary = "[G-Portal Work] Ca: S2"
+ *    - Bây giờ:   summary = "S2 - Chính Chủ" / "S2 - Trực hộ HuyenNTM" /
+ *                 "S2 - Đổi ca DungDM" (xem buildShiftEventTitle()).
+ *    - Task trên Google Tasks: bỏ tiền tố "[G-Portal]", chỉ còn đúng tên
+ *      PCCV giống hệ thống (VD: "HiFPT Chat").
+ *    - HỆ QUẢ: vì không còn tiền tố "[G-Portal Work]"/"[G-Portal]" trong
+ *      tiêu đề để lọc/tìm khi xoá hoặc cập nhật, cách xác định "sự kiện
+ *      nào do G-Portal tạo ra" được chuyển từ tìm-kiếm-theo-chữ (dễ nhầm
+ *      với sự kiện khác của người dùng) sang dùng
+ *      extendedProperties.private trên Google Calendar — một vùng dữ liệu
+ *      ẩn, không hiển thị cho người dùng, chỉ ứng dụng đọc được. Đây là
+ *      cách làm chuẩn và đáng tin cậy hơn nhiều so với so khớp chuỗi.
  * -------------------------------------------------------------------------
+ *
+ * (Giữ nguyên toàn bộ các fix trước đó: polling gapi/gis, gapi.client.init
+ * lỗi âm thầm, isLoggedIn set đồng bộ, logout bọc try/catch/finally, cảnh
+ * báo file://, cấu hình Calendar ID từ Cài đặt...)
  */
 
 const CLIENT_ID = '714398035986-2jdd33n4h7kguauq73jbirq6rlfpkte2.apps.googleusercontent.com';
@@ -52,10 +69,17 @@ const DISCOVERY_DOCS = [
 
 const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks';
 
+// Làm mới token sớm hơn thời điểm hết hạn thực tế bao nhiêu giây (an toàn dự phòng độ trễ mạng)
+const TOKEN_REFRESH_MARGIN_SEC = 300; // 5 phút
+// Khoảng chờ tối thiểu giữa các lần lên lịch làm mới, tránh loop gọi liên tục nếu Google trả về expires_in rất ngắn
+const TOKEN_REFRESH_MIN_DELAY_MS = 30000; // 30 giây
+
 let tokenClient;
 let gapiInited = false;
 let gisInited = false;
 let gapiLoadRequested = false; // tránh gọi gapi.load() nhiều lần trong lúc polling
+let tokenRefreshTimerId = null;
+let silentRestoreAttempted = false; // chỉ tự thử đăng nhập ngầm 1 lần mỗi phiên tải trang
 const GSYNC_START_TIME = Date.now();
 
 // Cập nhật dòng trạng thái dưới nút "Đăng nhập với Google" để người dùng thấy
@@ -149,14 +173,45 @@ function checkAllReady() {
     }
 }
 
-// Khởi tạo xác thực Google (tự động đăng nhập lại khi F5 nếu đã có token)
+// ============================================================
+// 1. LÀM MỚI TOKEN NGẦM (giữ phiên đăng nhập sống lâu hơn 1 lần hết hạn)
+// ============================================================
+
+// Lên lịch tự làm mới token TRƯỚC khi hết hạn, để người dùng không bao giờ
+// thấy app "rớt" về màn hình đăng nhập giữa lúc đang thao tác.
+function scheduleTokenRefresh(expiresInSeconds) {
+    if (tokenRefreshTimerId) {
+        clearTimeout(tokenRefreshTimerId);
+        tokenRefreshTimerId = null;
+    }
+    const safeExpires = Number.isFinite(expiresInSeconds) && expiresInSeconds > 0 ? expiresInSeconds : 3600;
+    const delayMs = Math.max((safeExpires - TOKEN_REFRESH_MARGIN_SEC) * 1000, TOKEN_REFRESH_MIN_DELAY_MS);
+
+    tokenRefreshTimerId = setTimeout(() => {
+        if (!tokenClient) return;
+        console.log('[G-Portal Auth] Đang tự động làm mới phiên đăng nhập Google (ngầm)...');
+        // prompt:'' => không ép hiện màn hình xin quyền nếu trình duyệt vẫn còn phiên hợp lệ
+        tokenClient.requestAccessToken({ prompt: '' });
+    }, delayMs);
+}
+
+function clearScheduledTokenRefresh() {
+    if (tokenRefreshTimerId) {
+        clearTimeout(tokenRefreshTimerId);
+        tokenRefreshTimerId = null;
+    }
+}
+
+// Khởi tạo xác thực Google (tự động đăng nhập lại khi F5 nếu đã có token, và
+// tự thử đăng nhập ngầm nếu token đã hết hạn nhưng máy này từng đăng nhập)
 function initGoogleAuth() {
     tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPES,
         callback: (tokenResponse) => {
             if (tokenResponse && tokenResponse.access_token) {
-                const expiryTime = Date.now() + ((tokenResponse.expires_in || 3600) * 1000);
+                const expiresIn = tokenResponse.expires_in || 3600;
+                const expiryTime = Date.now() + (expiresIn * 1000);
                 localStorage.setItem('gapi_token', JSON.stringify(tokenResponse));
                 localStorage.setItem('gapi_token_expiry', String(expiryTime));
                 if (gapi.client) gapi.client.setToken(tokenResponse);
@@ -164,6 +219,7 @@ function initGoogleAuth() {
                 AppState.isLoggedIn = true;
                 if (typeof window.showApp === 'function') window.showApp();
 
+                scheduleTokenRefresh(expiresIn);
                 loadAllDataFromDrive();
             } else {
                 setLoginStatus('Đăng nhập thất bại hoặc bị huỷ. Vui lòng thử lại.', true);
@@ -176,21 +232,30 @@ function initGoogleAuth() {
         error_callback: (err) => {
             console.error('[G-Portal Auth] OAuth error_callback:', err);
             const type = err && err.type ? err.type : 'unknown';
-            let msg = `Đăng nhập bị gián đoạn (${type}).`;
-            if (type === 'popup_closed' || type === 'popup_failed_to_open') {
-                msg += ' Cửa sổ đăng nhập Google đã bị đóng hoặc bị trình duyệt chặn popup — hãy cho phép popup cho trang này rồi thử lại.';
-            } else {
-                msg += ' Nếu đang ở chế độ Ẩn danh/Riêng tư, hãy bật "Cho phép cookie bên thứ 3" (Allow third-party cookies) cho accounts.google.com, hoặc dùng cửa sổ trình duyệt thông thường — Google Identity Services thường không hoạt động đầy đủ khi cookie bên thứ 3 bị chặn.';
+
+            // Nếu đây là lần thử "đăng nhập ngầm" tự động (không phải người dùng bấm nút)
+            // thì không cần làm phiền bằng thông báo lỗi to tướng — chỉ cần quay về màn
+            // hình đăng nhập bình thường để người dùng tự bấm khi cần.
+            if (type === 'popup_failed_to_open' || type === 'popup_closed') {
+                // Có thể do trình duyệt chặn popup vì không có thao tác chuột trực tiếp
+                // (trường hợp tự làm mới ngầm). Bỏ qua yên lặng, giữ phiên cũ nếu còn hạn,
+                // hoặc để người dùng bấm nút đăng nhập thủ công nếu đã hết hạn.
+                setLoginStatus('');
+                return;
             }
+
+            let msg = `Đăng nhập bị gián đoạn (${type}).`;
+            msg += ' Nếu đang ở chế độ Ẩn danh/Riêng tư, hãy bật "Cho phép cookie bên thứ 3" (Allow third-party cookies) cho accounts.google.com, hoặc dùng cửa sổ trình duyệt thông thường — Google Identity Services thường không hoạt động đầy đủ khi cookie bên thứ 3 bị chặn.';
             setLoginStatus(msg, true);
         }
     });
 
     // Khôi phục phiên đăng nhập cũ (nếu có) ngay khi tokenClient đã sẵn sàng.
     // Kiểm tra thêm hạn token: access token của Google thường hết hạn sau ~1 giờ,
-    // nếu hết hạn thì xoá và bắt đăng nhập lại thay vì để lại trạng thái "đăng nhập giả".
+    // nếu còn hạn thì dùng luôn VÀ lên lịch tự làm mới trước khi hết hạn thật sự.
     const savedTokenStr = localStorage.getItem('gapi_token');
     const savedExpiry = parseInt(localStorage.getItem('gapi_token_expiry') || '0', 10);
+
     if (savedTokenStr && Date.now() < savedExpiry) {
         try {
             const savedToken = JSON.parse(savedTokenStr);
@@ -198,6 +263,10 @@ function initGoogleAuth() {
                 gapi.client.setToken(savedToken);
                 AppState.isLoggedIn = true;
                 if (typeof window.showApp === 'function') window.showApp();
+
+                const remainingSec = Math.floor((savedExpiry - Date.now()) / 1000);
+                scheduleTokenRefresh(remainingSec);
+
                 loadAllDataFromDrive();
             }
         } catch (e) {
@@ -208,11 +277,20 @@ function initGoogleAuth() {
             if (typeof window.showLogin === 'function') window.showLogin();
         }
     } else if (savedTokenStr) {
-        // Token đã hết hạn
+        // Token đã hết hạn, nhưng thiết bị này từng đăng nhập thành công trước đó ->
+        // thử "đăng nhập ngầm" 1 lần (không ép hiện popup xin quyền) trước khi bắt
+        // người dùng phải tự bấm nút. Nếu trình duyệt vẫn còn phiên Google hợp lệ
+        // (chưa đăng xuất khỏi Google, cookie bên thứ 3 không bị chặn), thao tác này
+        // sẽ tự đưa người dùng vào thẳng ứng dụng mà không cần thao tác gì thêm.
         localStorage.removeItem('gapi_token');
         localStorage.removeItem('gapi_token_expiry');
         AppState.isLoggedIn = false;
-        if (typeof window.showLogin === 'function') window.showLogin('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.');
+        if (typeof window.showLogin === 'function') window.showLogin('Đang khôi phục phiên đăng nhập trước đó...');
+
+        if (!silentRestoreAttempted) {
+            silentRestoreAttempted = true;
+            tokenClient.requestAccessToken({ prompt: '' });
+        }
     }
 }
 
@@ -231,9 +309,13 @@ function loadAllDataFromDrive() {
 }
 
 // Nút Đăng nhập
+// FIX: đổi prompt từ 'consent' (luôn ép hiện màn hình xin quyền, kể cả những lần
+// đăng nhập lại sau này) sang '' (chỉ hiện khi Google thấy thật sự cần, ví dụ lần
+// đầu tiên hoặc khi phạm vi quyền thay đổi) -> các lần đăng nhập lại sau đó nhanh
+// và mượt hơn hẳn.
 window.handleAuthClick = function () {
     if (tokenClient) {
-        tokenClient.requestAccessToken({ prompt: 'consent' });
+        tokenClient.requestAccessToken({ prompt: '' });
     } else {
         let reason = 'chưa rõ nguyên nhân — hãy xem dòng chữ đỏ phía dưới nút này hoặc mở Console (F12) để xem lỗi.';
         if (!window.gapi) reason = 'thư viện apis.google.com/js/api.js chưa tải xong hoặc bị chặn.';
@@ -252,8 +334,9 @@ window.handleAuthClick = function () {
 // chừng -> localStorage.removeItem() và showLogin() phía dưới KHÔNG BAO GIỜ được chạy
 // -> bấm "Đăng xuất" không có phản ứng gì. Giờ bọc try/catch/finally để đăng xuất CỤC BỘ
 // (xoá token, quay về màn hình đăng nhập) LUÔN LUÔN thành công, kể cả khi phần thu hồi
-// quyền (revoke) trên server Google bị lỗi.
+// quyền (revoke) trên server Google bị lỗi. Đồng thời huỷ bộ đếm tự làm mới token ngầm.
 window.handleSignoutClick = function () {
+    clearScheduledTokenRefresh();
     try {
         if (window.gapi && gapi.client && typeof gapi.client.getToken === 'function') {
             const token = gapi.client.getToken();
@@ -295,40 +378,74 @@ function getConfiguredCalendarId(kind) {
     return (cfg.workCalendarId && cfg.workCalendarId.trim()) ? cfg.workCalendarId.trim() : DEFAULT_WORK_CALENDAR_ID;
 }
 
-// Xoá (các) sự kiện đã tồn tại của 1 ngày trên 1 calendar cụ thể, lọc theo tiền tố "query"
-// (để không đụng vào các sự kiện cá nhân khác không phải do G-Portal tạo ra).
-async function deleteCalendarEvent(dateStr, calendarId = getConfiguredCalendarId('work'), query = '[G-Portal Work]') {
+// ------------------------------------------------------------------------
+// Xác định & xoá sự kiện do G-Portal tạo ra bằng extendedProperties.private
+// (KHÔNG còn dựa vào chuỗi trong tiêu đề như "[G-Portal Work]" nữa, vì tiêu
+// đề giờ hiển thị thân thiện theo mẫu "S2 - Chính Chủ" / "S2 - Trực hộ ..."
+// và không còn tiền tố cố định để so khớp an toàn).
+// ------------------------------------------------------------------------
+async function findEventsByExtendedProps(dateStr, calendarId, propFilters) {
+    const minTime = `${dateStr}T00:00:00+07:00`;
+    const maxTime = `${dateStr}T23:59:59+07:00`;
+    const propArray = Object.entries(propFilters).map(([k, v]) => `${k}=${v}`);
     try {
-        const minTime = `${dateStr}T00:00:00+07:00`;
-        const maxTime = `${dateStr}T23:59:59+07:00`;
         const response = await gapi.client.calendar.events.list({
             calendarId: calendarId,
             timeMin: minTime,
             timeMax: maxTime,
-            q: query,
-            singleEvents: true
+            singleEvents: true,
+            privateExtendedProperty: propArray
         });
+        return response.result.items || [];
+    } catch (err) {
+        console.error('Lỗi khi tìm sự kiện Lịch:', err);
+        return [];
+    }
+}
 
-        const events = response.result.items;
-        if (events && events.length > 0) {
-            for (const ev of events) {
-                await gapi.client.calendar.events.delete({
-                    calendarId: calendarId,
-                    eventId: ev.id
-                });
-            }
+async function deleteCalendarEventsByProps(dateStr, calendarId, propFilters) {
+    try {
+        const events = await findEventsByExtendedProps(dateStr, calendarId, propFilters);
+        for (const ev of events) {
+            await gapi.client.calendar.events.delete({
+                calendarId: calendarId,
+                eventId: ev.id
+            });
         }
     } catch (err) {
         console.error("Lỗi khi xóa sự kiện Lịch:", err);
     }
 }
 
-// Đồng bộ 1 ngày lên Google Calendar (thêm mới hoặc cập nhật = xoá cũ rồi tạo lại)
-window.syncCalendarEvent = async function (dateStr, shiftCode, shiftTime, description) {
+// Dựng tiêu đề sự kiện Google Calendar theo đúng mẫu chấm công:
+//   "S2 - Chính Chủ"
+//   "S2 - Trực hộ HuyenNTM"
+//   "S2 - Đổi ca DungDM"
+// Nếu ca chính là OFF nhưng có tăng cường (OT) thì lấy mã ca OT làm phần đầu.
+function buildShiftEventTitle(dayData) {
+    const hasMainShift = dayData.shift && dayData.shift !== 'OFF';
+    const hasOT = dayData.ot && dayData.ot.trim() !== '';
+    const shiftPart = hasMainShift ? dayData.shift : (hasOT ? dayData.ot : 'OFF');
+
+    let typeLabel = 'Chính Chủ';
+    if (dayData.type === 'doica') {
+        typeLabel = dayData.trade ? `Đổi ca ${dayData.trade}` : 'Đổi ca';
+    } else if (dayData.type === 'trucho') {
+        typeLabel = dayData.help ? `Trực hộ ${dayData.help}` : 'Trực hộ';
+    }
+
+    return `${shiftPart} - ${typeLabel}`;
+}
+window.buildShiftEventTitle = buildShiftEventTitle;
+
+// Đồng bộ 1 ngày lên Google Calendar (thêm mới hoặc cập nhật = xoá cũ rồi tạo lại).
+// THAM SỐ: dayData là object đầy đủ của ngày đó (shift, ot, type, trade, help, task...)
+// để dựng đúng tiêu đề theo mẫu chấm công.
+window.syncCalendarEvent = async function (dateStr, dayData, shiftTime, description) {
     if (!AppState.isLoggedIn || !gapi.client) return;
 
     const calendarId = getConfiguredCalendarId('work');
-    await deleteCalendarEvent(dateStr, calendarId, '[G-Portal Work]');
+    await deleteCalendarEventsByProps(dateStr, calendarId, { gportalType: 'work' });
 
     let startTimeStr = "08:00:00";
     let endTimeStr = "17:00:00";
@@ -342,10 +459,11 @@ window.syncCalendarEvent = async function (dateStr, shiftCode, shiftTime, descri
     const endDateTime = `${dateStr}T${endTimeStr}+07:00`;
 
     const event = {
-        summary: `[G-Portal Work] Ca: ${shiftCode}`,
+        summary: buildShiftEventTitle(dayData),
         description: description,
         start: { dateTime: startDateTime, timeZone: 'Asia/Ho_Chi_Minh' },
-        end: { dateTime: endDateTime, timeZone: 'Asia/Ho_Chi_Minh' }
+        end: { dateTime: endDateTime, timeZone: 'Asia/Ho_Chi_Minh' },
+        extendedProperties: { private: { gportalType: 'work' } }
     };
 
     try {
@@ -359,31 +477,39 @@ window.syncCalendarEvent = async function (dateStr, shiftCode, shiftTime, descri
     }
 };
 
-// Xoá sự kiện làm việc của 1 ngày (dùng khi ngày đó chuyển thành OFF hoàn toàn, không còn ca/OT)
+// Xoá sự kiện làm việc của 1 ngày (dùng khi ngày đó chuyển thành OFF hoàn toàn,
+// không còn ca/OT, HOẶC khi người dùng bấm "Xóa lịch" cho cả ngày đó).
 window.deleteWorkCalendarEvent = async function (dateStr) {
     if (!AppState.isLoggedIn || !gapi.client) return;
-    await deleteCalendarEvent(dateStr, getConfiguredCalendarId('work'), '[G-Portal Work]');
+    await deleteCalendarEventsByProps(dateStr, getConfiguredCalendarId('work'), { gportalType: 'work' });
 };
 
 window.deleteMeetingCalendarEvent = async function (meeting) {
     if (!AppState.isLoggedIn || !gapi.client || !meeting) return;
-    await deleteCalendarEvent(meeting.date, getConfiguredCalendarId('meeting'), `[G-Portal Meeting] ${meeting.id}`);
+    await deleteCalendarEventsByProps(meeting.date, getConfiguredCalendarId('meeting'), {
+        gportalType: 'meeting',
+        gportalMeetingId: meeting.id
+    });
 };
 
 window.syncMeetingCalendarEvent = async function (meeting) {
     if (!AppState.isLoggedIn || !gapi.client || !meeting) return;
     const calendarId = getConfiguredCalendarId('meeting');
-    await deleteCalendarEvent(meeting.date, calendarId, `[G-Portal Meeting] ${meeting.id}`);
+    await deleteCalendarEventsByProps(meeting.date, calendarId, {
+        gportalType: 'meeting',
+        gportalMeetingId: meeting.id
+    });
 
     const startDateTime = `${meeting.date}T${meeting.start || '09:00'}:00+07:00`;
     const endDateTime = `${meeting.date}T${meeting.end || '10:00'}:00+07:00`;
     const isOnline = meeting.mode === 'online';
     const event = {
-        summary: `[G-Portal Meeting] ${meeting.id} ${meeting.title}`,
+        summary: meeting.title,
         description: [meeting.content, isOnline ? `Link họp: ${meeting.location || ''}` : `Địa điểm: ${meeting.location || ''}`].filter(Boolean).join('\n'),
         location: meeting.location || '',
         start: { dateTime: startDateTime, timeZone: 'Asia/Ho_Chi_Minh' },
-        end: { dateTime: endDateTime, timeZone: 'Asia/Ho_Chi_Minh' }
+        end: { dateTime: endDateTime, timeZone: 'Asia/Ho_Chi_Minh' },
+        extendedProperties: { private: { gportalType: 'meeting', gportalMeetingId: meeting.id } }
     };
 
     try {
@@ -406,13 +532,16 @@ async function findGoogleTaskByDate(dateKey) {
     return items.find(t => t.due && t.due.substring(0, 10) === dateKey);
 }
 
-// Đồng bộ PCCV lên Google Tasks: cập nhật nếu đã có Task của ngày đó, thêm mới nếu chưa có
+// Đồng bộ PCCV lên Google Tasks: cập nhật nếu đã có Task của ngày đó, thêm mới nếu chưa có.
+// FIX: bỏ tiền tố "[G-Portal] " khỏi tiêu đề Task — giờ tiêu đề chỉ còn đúng tên PCCV,
+// giống hệt tên hiển thị trên hệ thống (VD: "HiFPT Chat"). Việc xác định Task nào thuộc
+// về ngày nào vẫn dựa vào trường "due" (ngày đến hạn) như trước, không phụ thuộc tiêu đề.
 window.syncGoogleTask = async function (dateKey, taskName, notes) {
     if (!AppState.isLoggedIn || !gapi.client.tasks) return;
     try {
         const dueISO = `${dateKey}T00:00:00.000Z`;
         const existing = await findGoogleTaskByDate(dateKey);
-        const taskBody = { title: `[G-Portal] ${taskName}`, notes: notes || '', due: dueISO };
+        const taskBody = { title: taskName, notes: notes || '', due: dueISO };
 
         if (existing) {
             await gapi.client.tasks.tasks.update({
@@ -432,7 +561,8 @@ window.syncGoogleTask = async function (dateKey, taskName, notes) {
     }
 };
 
-// Xoá Google Task của 1 ngày (dùng khi PCCV bị gỡ khỏi ngày đó trên G-Portal)
+// Xoá Google Task của 1 ngày (dùng khi PCCV bị gỡ khỏi ngày đó trên G-Portal,
+// hoặc khi người dùng bấm "Xóa lịch" cho cả ngày đó).
 window.deleteGoogleTask = async function (dateKey) {
     if (!AppState.isLoggedIn || !gapi.client.tasks) return;
     try {
