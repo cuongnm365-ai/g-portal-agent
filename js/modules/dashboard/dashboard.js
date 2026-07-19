@@ -1,5 +1,9 @@
+/**
+ * dashboard.js - Dashboard Module
+ */
+
 let dashboardChart = null;
-let dashDate = new Date(); // Tháng đang xem trên Dashboard
+let dashDate = new Date();
 
 document.addEventListener('DOMContentLoaded', () => {
     try {
@@ -21,20 +25,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// Hàm gọi API tải lại dữ liệu Lịch và Năng suất theo tháng đang chọn trên Dashboard
 async function syncDashboardData() {
     const year = dashDate.getFullYear();
     const month = (dashDate.getMonth() + 1).toString().padStart(2, '0');
     document.getElementById('dash-month-display').innerText = `Tháng ${month}/${year}`;
 
     if (typeof AppState !== 'undefined' && AppState.isLoggedIn && window.GPORTAL_FOLDERS) {
-        // Tải song song 2 file của tháng tương ứng
         const [schData, prodData] = await Promise.all([
             getJsonFromDrive(`schedule_${year}_${month}.json`, window.GPORTAL_FOLDERS.shifts),
             getJsonFromDrive(`productivity_${year}_${month}.json`, window.GPORTAL_FOLDERS.productivity)
         ]);
 
-        // Ghi đè vào biến toàn cục để module khác cũng nhận diện
         window.monthlyScheduleData = schData || {};
         window.monthlyProductivityData = prodData || {};
     }
@@ -49,7 +50,8 @@ window.updateDashboard = function () {
 
     document.getElementById('dash-month-display').innerText = `Tháng ${(month + 1).toString().padStart(2, '0')}/${year}`;
 
-    let totalCalls = 0;
+    let totalCallsMonth = 0;
+    let totalCallsWeek = 0;
     let workDays = 0;
     let otDays = 0;
     let totalLateSec = 0;
@@ -61,22 +63,29 @@ window.updateDashboard = function () {
     const schData = window.monthlyScheduleData || {};
     const prodData = window.monthlyProductivityData || {};
 
+    const today = new Date();
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - today.getDay());
+    weekStart.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
+
     for (let day = 1; day <= daysInMonth; day++) {
         const dateKey = `${year}-${(month + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+        const dateObj = new Date(year, month, day);
 
-        // Trục X của biểu đồ
         chartLabels.push(day.toString());
 
-        // Thống kê Lịch
         if (schData[dateKey]) {
             if (schData[dateKey].shift !== 'OFF') workDays++;
             if (schData[dateKey].ot && schData[dateKey].ot.trim() !== '') otDays++;
         }
 
-        // Thống kê Năng suất
+        let dayTotal = 0;
         if (prodData[dateKey]) {
-            const dayTotal = prodData[dateKey].total || 0;
-            totalCalls += dayTotal;
+            dayTotal = prodData[dateKey].total || 0;
+            totalCallsMonth += dayTotal;
             chartData.push(dayTotal);
 
             if (prodData[dateKey].timeLate) totalLateSec += timeStrToSeconds(prodData[dateKey].timeLate);
@@ -84,41 +93,63 @@ window.updateDashboard = function () {
         } else {
             chartData.push(0);
         }
+
+        if (dateObj >= weekStart && dateObj <= weekEnd) {
+            totalCallsWeek += dayTotal;
+        }
     }
 
-    // 1. Render KPI Mục Tiêu
     let target = 2000;
-    if (window.portalSettings && window.portalSettings.coefficients && window.portalSettings.coefficients.kpiTarget) {
-        target = window.portalSettings.coefficients.kpiTarget;
+    let coeffOtCong = 0.5;
+    if (window.portalSettings && window.portalSettings.coefficients) {
+        target = window.portalSettings.coefficients.kpiTarget || 2000;
+        coeffOtCong = window.portalSettings.coefficients.coeffOtCong !== undefined ? window.portalSettings.coefficients.coeffOtCong : 0.5;
     }
-    let percent = target > 0 ? ((totalCalls / target) * 100).toFixed(1) : 0;
-    if (percent > 100) percent = 100; // Cap thanh Progress ở 100%
 
-    document.getElementById('kpi-calls').innerText = `${totalCalls} / ${target}`;
-    document.getElementById('kpi-progress').style.width = `${percent}%`;
-    document.getElementById('kpi-percent').innerText = `Hoàn thành: ${percent}%`;
+    let percentMonth = target > 0 ? ((totalCallsMonth / target) * 100).toFixed(1) : 0;
+    if (percentMonth > 100) percentMonth = 100;
 
-    // 2. Render Ngày công
-    document.getElementById('kpi-workdays').innerText = `${workDays} Ngày`;
-    document.getElementById('kpi-ot').innerText = `Tăng cường (OT): ${otDays} ngày`;
+    setText('kpi-calls-month', `${totalCallsMonth} / ${target}`);
+    setWidth('kpi-progress-month', `${percentMonth}%`);
+    setText('kpi-percent-month', `Hoàn thành: ${percentMonth}%`);
 
-    // 3. Render Vi phạm
-    document.getElementById('kpi-late').innerText = `Trễ: ${secondsToTimeStr(totalLateSec)}`;
-    document.getElementById('kpi-early').innerText = `Về sớm: ${secondsToTimeStr(totalEarlySec)}`;
+    const weekTarget = Math.round(target / 4.33) || 0;
+    let percentWeek = weekTarget > 0 ? ((totalCallsWeek / weekTarget) * 100).toFixed(1) : 0;
+    if (percentWeek > 100) percentWeek = 100;
 
-    // 4. Vẽ Biểu đồ
+    setText('kpi-calls-week', `${totalCallsWeek} / ${weekTarget}`);
+    setWidth('kpi-progress-week', `${percentWeek}%`);
+    setText('kpi-percent-week', `Hoàn thành: ${percentWeek}%`);
+
+    const tongCong = (workDays + otDays * coeffOtCong).toFixed(2);
+    setText('kpi-workdays', `${workDays} Ngày`);
+    setText('kpi-ot', `Tăng cường (OT): ${otDays} ngày`);
+    setText('kpi-cong', `Tổng công tính lương: ${tongCong}`);
+
+    setText('kpi-late', `Trễ: ${secondsToTimeStr(totalLateSec)}`);
+    setText('kpi-early', `Về sớm: ${secondsToTimeStr(totalEarlySec)}`);
+
     drawProductivityChart(chartLabels, chartData);
+}
+
+function setText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.innerText = text;
+}
+
+function setWidth(id, width) {
+    const el = document.getElementById(id);
+    if (el) el.style.width = width;
 }
 
 function drawProductivityChart(labels, data) {
     const ctx = document.getElementById('productivity-chart');
-    if (!ctx) return;
+    if (!ctx || typeof Chart === 'undefined') return;
 
     if (dashboardChart) {
         dashboardChart.destroy();
     }
 
-    // Lấy màu từ biến CSS (--accent) để biểu đồ đồng bộ với theme
     const rootStyles = getComputedStyle(document.documentElement);
     const accentColor = rootStyles.getPropertyValue('--accent').trim() || '#38bdf8';
 
@@ -146,7 +177,6 @@ function drawProductivityChart(labels, data) {
     });
 }
 
-// Helpers quy đổi thời gian hh:mm:ss
 function timeStrToSeconds(str) {
     if (!str) return 0;
     const parts = str.split(':');

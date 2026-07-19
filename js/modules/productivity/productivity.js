@@ -7,30 +7,24 @@ document.addEventListener('DOMContentLoaded', () => {
 function initProductivityEvents() {
     const dateInput = document.getElementById('prod-date');
 
-    // Mặc định chọn ngày hôm nay
     const today = new Date();
     const yyyy = today.getFullYear();
     const mm = String(today.getMonth() + 1).padStart(2, '0');
     const dd = String(today.getDate()).padStart(2, '0');
     dateInput.value = `${yyyy}-${mm}-${dd}`;
 
-    // Lắng nghe sự kiện thay đổi ngày
     dateInput.addEventListener('change', loadProductivityForDate);
 
-    // Lắng nghe thay đổi dữ liệu để tự động tính Tổng Cuộc Gọi
     const inputs = document.querySelectorAll('.prod-input');
     inputs.forEach(input => {
         input.addEventListener('input', calculateTotal);
     });
 
-    // Nút Lưu
     document.getElementById('btn-save-prod').addEventListener('click', saveProductivity);
 
-    // Hiển thị dữ liệu mặc định ngay khi vào trang (kể cả trước khi đăng nhập Drive)
     loadProductivityForDate();
 }
 
-// Hàm này được gọi bởi googleSync.js sau khi đăng nhập thành công
 window.loadProductivityFromDrive = async function () {
     if (!window.GPORTAL_FOLDERS) return;
     const dateInput = document.getElementById('prod-date').value;
@@ -39,7 +33,6 @@ window.loadProductivityFromDrive = async function () {
     const [year, month, _] = dateInput.split('-');
     const fileName = `productivity_${year}_${month}.json`;
 
-    // Tải dữ liệu năng suất của cả tháng đó về
     const data = await getJsonFromDrive(fileName, window.GPORTAL_FOLDERS.productivity);
     if (data) {
         window.monthlyProductivityData = data;
@@ -47,15 +40,13 @@ window.loadProductivityFromDrive = async function () {
         window.monthlyProductivityData = {};
     }
 
-    // Hiển thị dữ liệu của ngày đang chọn
     loadProductivityForDate();
 }
 
 function loadProductivityForDate() {
-    const dateKey = document.getElementById('prod-date').value; // Định dạng chuẩn YYYY-MM-DD
+    const dateKey = document.getElementById('prod-date').value;
     if (!dateKey) return;
 
-    // 1. Lấy thông tin Ca và PCCV từ module Lịch làm việc (window.monthlyScheduleData)
     const scheduleData = window.monthlyScheduleData || {};
 
     let shiftInfo = 'OFF';
@@ -73,12 +64,10 @@ function loadProductivityForDate() {
         }
     }
 
-    // Hiển thị ra giao diện thẻ Tag
     document.getElementById('prod-shift-tag').innerText = `Ca: ${shiftInfo}`;
     document.getElementById('prod-shift-tag').style.background = shiftColor;
     document.getElementById('prod-task-tag').innerHTML = `<i class='bx bx-check-square'></i> PCCV: ${taskInfo}`;
 
-    // 2. Lấy dữ liệu Năng suất đã lưu của ngày này (nếu có) đổ vào Form
     const prodData = window.monthlyProductivityData[dateKey] || {
         inbound: 0, busy: 0, hifpt: 0, online: 0, saInfo: 0, saTech: 0, timeLate: '', timeEarly: ''
     };
@@ -92,7 +81,6 @@ function loadProductivityForDate() {
     document.getElementById('time-late').value = prodData.timeLate || '';
     document.getElementById('time-early').value = prodData.timeEarly || '';
 
-    // Tự động tính toán lại tổng
     calculateTotal();
 }
 
@@ -104,13 +92,11 @@ function calculateTotal() {
     const saInfo = parseInt(document.getElementById('call-sa-info').value) || 0;
     const saTech = parseInt(document.getElementById('call-sa-tech').value) || 0;
 
-    // Lấy hệ số (Mặc định là 3 nếu chưa cài đặt)
     let coeff = 3;
     if (window.portalSettings && window.portalSettings.coefficients) {
         coeff = window.portalSettings.coefficients.saModifier || 3;
     }
 
-    // CÔNG THỨC: Tổng = Inbound + Busy + HiFPT + Online + ((SA_Thông_Tin + SA_Kỹ_Thuật) * Hệ Số)
     const total = inbound + busy + hifpt + online + ((saInfo + saTech) * coeff);
 
     document.getElementById('prod-total').innerText = total;
@@ -130,12 +116,10 @@ async function saveProductivity() {
     const timeEarly = document.getElementById('time-early').value.trim();
     const total = parseInt(document.getElementById('prod-total').innerText) || 0;
 
-    // Lưu vào State
     window.monthlyProductivityData[dateKey] = {
         inbound, busy, hifpt, online, saInfo, saTech, timeLate, timeEarly, total
     };
 
-    // Đẩy lên Google Drive ID chỉ định
     if (typeof AppState !== 'undefined' && AppState.isLoggedIn && window.GPORTAL_FOLDERS) {
         const [year, month, _] = dateKey.split('-');
         const fileName = `productivity_${year}_${month}.json`;

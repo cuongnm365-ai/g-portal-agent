@@ -1,0 +1,163 @@
+/* =========================================================
+   EMAIL TOOL — style riêng cho module "Soạn Email" (SOC Portal cũ)
+   QUAN TRỌNG: toàn bộ biến CSS (--bg, --accent, --text...) và style
+   nền/scrollbar/login... của bản gốc đã được SCOPE lại chỉ áp dụng
+   bên trong #view-email, để không ghi đè theme chính (--bg-primary,
+   --accent...) của G-Portal đang dùng cho toàn bộ ứng dụng.
+   Toàn bộ phần Đăng nhập / Sidebar / Header riêng của bản gốc đã bị
+   loại bỏ vì module này giờ dùng chung khung sườn + đăng nhập Google
+   của G-Portal.
+   ========================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+
+#view-email {
+    --et-font-display: 'Space Grotesk', sans-serif;
+    --et-font-mono: 'IBM Plex Mono', monospace;
+
+    --et-surface: var(--bg-secondary);
+    --et-surface-2: var(--bg-card);
+    --et-border: var(--border-color);
+    --et-border-strong: var(--border-color);
+
+    --et-text: var(--text-main);
+    --et-text-muted: var(--text-muted);
+    --et-text-faint: var(--text-muted);
+
+    --et-accent: #F26F21;
+    --et-accent-strong: #D9590F;
+    --et-accent-soft: rgba(242, 111, 33, 0.12);
+    --et-accent-soft-text: #D9590F;
+
+    --et-success: var(--success);
+    --et-success-soft: rgba(34, 197, 94, 0.14);
+    --et-danger: var(--danger);
+    --et-danger-soft: rgba(239, 68, 68, 0.14);
+
+    --et-shadow-sm: 0 1px 2px rgba(20, 30, 55, 0.04);
+    --et-shadow-md: var(--shadow-soft);
+    --et-shadow-lg: 0 16px 40px rgba(20, 30, 55, 0.18);
+
+    --et-radius: 14px;
+    --et-radius-sm: 9px;
+}
+:root[data-theme="dark"] #view-email {
+    --et-accent-strong: #FF8A47;
+    --et-accent-soft: rgba(242, 111, 33, 0.16);
+    --et-accent-soft-text: #FFB582;
+}
+
+#view-email, #view-email * { box-sizing: border-box; }
+#view-email .font-display { font-family: var(--et-font-display) !important; letter-spacing: -0.01em; }
+#view-email .font-mono { font-family: var(--et-font-mono); }
+
+/* ----- Sub-tabs (Soạn Email / Thống kê) ----- */
+.email-subtabs { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+.email-subtab-btn {
+    padding: 9px 16px; border-radius: 10px; border: 1px solid var(--et-border);
+    background: var(--et-surface); color: var(--et-text-muted); font-weight: 700; font-size: 12.5px;
+    cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: all .15s ease;
+}
+.email-subtab-btn:hover { color: var(--et-text); border-color: var(--et-border-strong); }
+.email-subtab-btn.active { color: var(--et-accent-strong); background: var(--et-accent-soft); border-color: var(--et-accent); }
+.email-tab-content { display: none; }
+.email-tab-content.active { display: block; }
+
+/* ----- Ô nhập liệu ----- */
+#view-email .soc-input {
+    width: 100%;
+    padding: 10px 14px;
+    background-color: var(--et-surface);
+    border: 1px solid var(--et-border);
+    border-radius: var(--et-radius-sm);
+    color: var(--et-text);
+    font-size: 13.5px;
+    font-weight: 500;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+#view-email .soc-input:focus-visible, #view-email .soc-input:focus {
+    border-color: var(--et-accent);
+    outline: none;
+    box-shadow: 0 0 0 3px var(--et-accent-soft);
+}
+#view-email .soc-input::placeholder { color: var(--et-text-faint); font-weight: 400; }
+#view-email .soc-input:disabled { cursor: not-allowed; opacity: 0.6; }
+
+#view-email .soc-label {
+    display: block; font-size: 11px; font-weight: 700; color: var(--et-text-muted);
+    margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.06em; font-family: var(--et-font-mono);
+}
+#view-email input[type="checkbox"].template-input { accent-color: var(--et-accent); }
+
+/* ----- Step card (form theo từng bước) ----- */
+#view-email .step-card { background: var(--et-surface); border: 1px solid var(--et-border); border-radius: var(--et-radius); box-shadow: var(--et-shadow-sm); }
+#view-email .step-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--et-border); }
+#view-email .step-index { font-family: var(--et-font-mono); font-size: 11px; font-weight: 700; color: var(--et-accent); background: var(--et-accent-soft); border-radius: 6px; padding: 3px 7px; flex-shrink: 0; }
+#view-email .step-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--et-text); }
+#view-email .step-body { padding: 16px; }
+#view-email .workspace-panel { background: var(--et-surface); border: 1px solid var(--et-border); border-radius: var(--et-radius); box-shadow: var(--et-shadow-sm); }
+
+/* ----- Khung xem trước Email (giả lập client email) ----- */
+#view-email .mail-frame { background: var(--et-surface); border: 1px solid var(--et-border); border-radius: var(--et-radius); box-shadow: var(--et-shadow-md); overflow: hidden; }
+#view-email .mail-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--et-surface-2); border-bottom: 1px solid var(--et-border); }
+#view-email .mail-dots { display: flex; gap: 6px; }
+#view-email .mail-dots span { width: 9px; height: 9px; border-radius: 50%; display: block; }
+#view-email .mail-dots span:nth-child(1) { background: #ED6A5E; }
+#view-email .mail-dots span:nth-child(2) { background: #F4BF4F; }
+#view-email .mail-dots span:nth-child(3) { background: #61C454; }
+#view-email .mail-meta { background: var(--et-surface-2); border-bottom: 1px solid var(--et-border); }
+#view-email .mail-meta-row { display: flex; align-items: baseline; gap: 10px; padding: 7px 16px; font-size: 12.5px; }
+#view-email .mail-meta-row + .mail-meta-row { border-top: 1px dashed var(--et-border); }
+#view-email .mail-meta-label { font-family: var(--et-font-mono); font-size: 10.5px; font-weight: 700; color: var(--et-text-faint); text-transform: uppercase; width: 58px; flex-shrink: 0; }
+#view-email #emailSubject { font-weight: 800; color: var(--et-accent-strong); font-size: 14.5px; }
+#view-email #emailContent { font-size: 14.5px; line-height: 1.65; color: var(--et-text); }
+#view-email #emailContent p { margin-bottom: 8px !important; }
+#view-email #emailSignature { margin-top: 22px; padding-top: 16px; border-top: 1px dashed var(--et-border); font-size: 13.5px; line-height: 1.55; color: var(--et-text-muted); }
+#view-email #emailContent, #view-email #emailSignature { -webkit-user-select: none; user-select: none; cursor: default; }
+#view-email #emailSubject { -webkit-user-select: text; user-select: text; cursor: text; }
+
+/* ----- Nút bấm ----- */
+#view-email .btn-accent { background: var(--et-accent); color: #fff; font-weight: 700; border-radius: var(--et-radius-sm); padding: 10px 18px; border: none; cursor: pointer; transition: background .15s ease, transform .1s ease; box-shadow: var(--et-shadow-sm); }
+#view-email .btn-accent:hover { background: var(--et-accent-strong); }
+#view-email .btn-accent:active { transform: translateY(1px); }
+#view-email .btn-ghost { background: var(--et-surface); border: 1px solid var(--et-border); color: var(--et-text-muted); font-weight: 700; border-radius: var(--et-radius-sm); padding: 8px 14px; cursor: pointer; transition: all .15s ease; }
+#view-email .btn-ghost:hover { color: var(--et-text); border-color: var(--et-border-strong); }
+#view-email .btn-danger-soft { background: var(--et-danger-soft); color: var(--et-danger); font-weight: 700; border-radius: var(--et-radius-sm); border: none; cursor: pointer; padding: 8px 14px; }
+#view-email .btn-danger-soft:hover { filter: brightness(0.97); }
+
+/* ----- Status pill ----- */
+#view-email .status-pill { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; border-radius: 999px; font-family: var(--et-font-mono); font-size: 11px; font-weight: 600; letter-spacing: 0.02em; background: var(--et-surface-2); border: 1px solid var(--et-border); color: var(--et-text-muted); }
+#view-email .status-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--et-text-faint); flex-shrink: 0; }
+#view-email .status-pill.is-ready { color: var(--et-success); border-color: var(--et-success-soft); background: var(--et-success-soft); }
+#view-email .status-pill.is-ready .dot { background: var(--et-success); box-shadow: 0 0 0 3px var(--et-success-soft); animation: et-pulse-dot 2s infinite; }
+@keyframes et-pulse-dot { 0%, 100% { box-shadow: 0 0 0 0 rgba(22, 138, 94, 0.35); } 50% { box-shadow: 0 0 0 4px rgba(22, 138, 94, 0); } }
+@media (prefers-reduced-motion: reduce) { #view-email .status-pill.is-ready .dot { animation: none; } }
+
+/* ----- Settings card (dùng lại trong trang Cài Đặt gộp chung) ----- */
+.settings-card { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 16px; box-shadow: var(--shadow-soft); padding: 22px; }
+.settings-icon { width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; border-radius: 10px; }
+
+/* ----- Toast ----- */
+#view-email #toast { background: var(--et-surface); border: 1px solid var(--et-success-soft); color: var(--et-success); box-shadow: var(--et-shadow-lg); }
+
+/* ----- Cảnh báo lỗi định dạng SĐT ----- */
+#view-email #phone_error {}
+
+/* ----- Ép bẻ gãy chuỗi email dính liền trong khung CC/BCC ----- */
+#view-email #ccDisplay, #view-email #bccDisplay { align-items: flex-start !important; height: auto !important; min-height: 32px; }
+#view-email #ccValue, #view-email #bccValue {
+    display: block !important; flex: 1 !important; word-break: break-all !important;
+    overflow-wrap: break-word !important; white-space: normal !important; line-height: 1.6 !important; padding-bottom: 4px;
+}
+
+/* ----- Trợ năng ----- */
+#view-email a:focus-visible, #view-email button:focus-visible, #view-email [tabindex]:focus-visible {
+    outline: 2px solid var(--et-accent); outline-offset: 2px;
+}
+
+@media (max-width: 767px) {
+    #view-email .mail-frame .p-8 { padding: 18px !important; }
+    #view-email .step-body { padding: 14px !important; }
+    #view-email #emailSubject { font-size: 13.5px; }
+    #view-email #emailContent { font-size: 14px; }
+}

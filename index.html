@@ -2,25 +2,31 @@
 <html lang="vi" data-theme="dark">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
     <title>G-Portal | Cổng thông tin cá nhân</title>
-    <meta name="description" content="G-Portal - Quản lý lịch làm việc, năng suất và KPI cá nhân, đồng bộ Google Calendar.">
+    <meta name="description" content="G-Portal - Quản lý lịch làm việc, năng suất, KPI cá nhân, đồng bộ Google Calendar, và soạn thảo email nghiệp vụ nhanh chóng.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Tailwind CDN: bắt buộc cho module "Soạn Email" (rất nhiều class tiện ích được
+         dùng cả trong HTML tĩnh lẫn trong HTML sinh động bởi settings-panel.js) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
     <link rel="stylesheet" href="css/base.css">
     <link rel="stylesheet" href="css/login.css">
     <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/email-tool.css">
 </head>
 <body>
 
-    <!-- ===================== LOGIN SCREEN (AI / HR-Tech style) ===================== -->
+    <!-- ===================== LOGIN SCREEN (AI / HR-Tech style) — DÙNG CHUNG CHO TOÀN BỘ APP ===================== -->
     <div id="login-screen" class="login-screen">
         <div class="login-hero">
             <div class="login-hero-badge"><i class='bx bx-bot'></i> AI-Ready Workforce Portal</div>
-            <h1>Vận hành ca làm việc & <span>năng suất cá nhân</span> theo phong cách công nghệ</h1>
-            <p class="lead">G-Portal giúp bạn quản trị lịch làm việc linh hoạt, theo dõi KPI/OKR theo thời gian thực và đồng bộ mọi thứ lên Google Calendar &amp; Tasks...</p>
+            <h1>Vận hành ca làm việc &amp; <span>năng suất cá nhân</span> theo phong cách công nghệ</h1>
+            <p class="lead">G-Portal giúp bạn quản trị lịch làm việc linh hoạt, theo dõi KPI/OKR theo thời gian thực, đồng bộ lên Google Calendar &amp; Tasks, và soạn thảo nhanh email nghiệp vụ theo mẫu chuẩn — tất cả trong một nơi duy nhất.</p>
 
             <div class="login-feature-grid">
                 <div class="login-feature">
@@ -36,8 +42,8 @@
                     <div><strong>Đồng bộ Google</strong><span>Lịch &amp; phân công công việc tự động cập nhật lên Google Calendar và Google Tasks.</span></div>
                 </div>
                 <div class="login-feature">
-                    <i class='bx bx-trophy'></i>
-                    <div><strong>Tạo động lực mỗi ngày</strong><span>Trực quan hoá mục tiêu OKR cá nhân giúp bạn luôn biết mình đang ở đâu.</span></div>
+                    <i class='bx bx-envelope'></i>
+                    <div><strong>Soạn Email nhanh</strong><span>Khởi tạo email chăm sóc khách hàng theo mẫu chuẩn chỉ trong vài giây.</span></div>
                 </div>
             </div>
 
@@ -68,26 +74,33 @@
             <div class="login-card">
                 <div class="brand-row"><i class='bx bx-bot'></i><span>G-PORTAL</span></div>
                 <h2>Đăng nhập để tiếp tục</h2>
-                <p class="sub">Toàn bộ dữ liệu ca làm việc, năng suất của bạn được lưu trữ riêng tư trên Google Drive của chính bạn. Đăng nhập để bắt đầu.</p>
+                <p class="sub">Toàn bộ dữ liệu ca làm việc, năng suất, cấu hình của bạn được lưu trữ riêng tư trên Google Drive của chính bạn. Đăng nhập một lần duy nhất để dùng mọi chức năng, kể cả Soạn Email.</p>
 
-                <button id="btn-login-google" class="btn-google-login" type="button">
+                <button id="btn-login-google" class="btn-google-login" type="button" onclick="handleAuthClick()">
                     <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="">
                     <span>Đăng nhập với Google</span>
                 </button>
 
                 <p id="login-status" class="login-status"></p>
+                <button id="btn-retry-google" class="btn-ghost" type="button" onclick="retryGoogleLibraries()" style="display:none; margin-top:10px; width:100%; justify-content:center;">
+                    <i class='bx bx-refresh'></i> Thử lại kết nối Google
+                </button>
 
-                <p class="login-footnote">Bằng việc đăng nhập, bạn cho phép G-Portal đọc/ghi các file cấu hình trên Google Drive, cũng như tạo sự kiện Google Calendar &amp; Google Tasks.</p>
+                <p class="login-footnote">Bằng việc đăng nhập, bạn cho phép G-Portal đọc/ghi các file cấu hình trên Google Drive, tạo sự kiện Google Calendar &amp; Google Tasks, và lấy tên/email hồ sơ Google để hiển thị &amp; ghi nhận thống kê sử dụng.</p>
             </div>
         </div>
     </div>
 
     <!-- ===================== APP SHELL (chỉ hiển thị sau khi đăng nhập) ===================== -->
     <div id="app-shell" style="display: none;">
+        <div id="sidebar-overlay" class="sidebar-overlay"></div>
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-brand">
                 <i class='bx bx-bot brand-icon'></i>
                 <span class="brand-text">G-PORTAL</span>
+                <button id="sidebar-pin-btn" class="sidebar-pin-btn" type="button" title="Ghim thanh điều hướng luôn mở rộng">
+                    <i class='bx bx-pin'></i>
+                </button>
             </div>
             <nav class="sidebar-menu">
                 <a href="#dashboard" class="menu-item active" data-target="dashboard">
@@ -98,6 +111,9 @@
                 </a>
                 <a href="#productivity" class="menu-item" data-target="productivity">
                     <i class='bx bx-line-chart'></i><span class="menu-text">Năng Suất</span>
+                </a>
+                <a href="#email" class="menu-item" data-target="email">
+                    <i class='bx bx-envelope'></i><span class="menu-text">Soạn Email</span>
                 </a>
                 <a href="#settings" class="menu-item" data-target="settings">
                     <i class='bx bx-cog'></i><span class="menu-text">Cài Đặt</span>
@@ -111,11 +127,16 @@
 
         <main class="main-container">
             <header class="main-header">
-                <div>
-                    <div class="page-title" id="current-page-title">Dashboard</div>
-                    <div class="page-subtitle" id="current-page-subtitle">Tổng quan năng suất &amp; KPI cá nhân</div>
+                <div class="main-header-left">
+                    <button id="mobile-sidebar-toggle" class="mobile-sidebar-toggle" type="button" title="Mở danh mục chức năng">
+                        <i class='bx bx-menu'></i>
+                    </button>
+                    <div>
+                        <div class="page-title" id="current-page-title">Dashboard</div>
+                        <div class="page-subtitle" id="current-page-subtitle">Tổng quan năng suất &amp; KPI cá nhân</div>
+                    </div>
                 </div>
-                <div class="user-profile" id="user-profile-box" style="font-size:13px;color:var(--text-muted);"></div>
+                <div id="user-profile-box"></div>
             </header>
 
             <div class="content-body">
@@ -145,7 +166,7 @@
                             <div class="kpi-subtitle" id="kpi-percent-week">Hoàn thành: 0%</div>
                         </div>
                         <div class="ai-card kpi-card">
-                            <div class="kpi-title"><i class='bx bx-briefcase'></i> Ngày công & Tăng cường</div>
+                            <div class="kpi-title"><i class='bx bx-briefcase'></i> Ngày công &amp; Tăng cường</div>
                             <div class="kpi-value" style="color: var(--warning);" id="kpi-workdays">0 Ngày</div>
                             <div class="kpi-subtitle" id="kpi-ot">Tăng cường (OT): 0 ngày</div>
                             <div class="kpi-subtitle" id="kpi-cong" style="margin-top:4px;">Tổng công tính lương: 0</div>
@@ -177,12 +198,22 @@
                             <button id="btn-download-schedule-tpl" class="btn-primary" style="background: #2563eb;"><i class='bx bx-download'></i> File Mẫu</button>
                             <input type="file" id="excel-upload" accept=".xlsx, .xls" style="display: none;">
                             <label for="excel-upload" class="btn-primary" style="background: var(--accent-2);"><i class='bx bx-upload'></i> Import Lịch</label>
+                            <button id="btn-add-meeting" class="btn-primary" style="background: #7c3aed;"><i class='bx bx-video-plus'></i> Thêm họp</button>
                             <button id="btn-sync-calendar" class="btn-primary" style="background: var(--warning);"><i class='bx bx-sync'></i> Đồng bộ Google</button>
                         </div>
                     </div>
-                    <div class="calendar-container ai-card">
-                        <div class="calendar-header-days"><div>CN</div><div>T2</div><div>T3</div><div>T4</div><div>T5</div><div>T6</div><div>T7</div></div>
-                        <div id="calendar-grid" class="calendar-grid"></div>
+
+                    <div class="schedule-layout">
+                        <div class="calendar-container ai-card">
+                            <div class="calendar-header-days"><div>CN</div><div>T2</div><div>T3</div><div>T4</div><div>T5</div><div>T6</div><div>T7</div></div>
+                            <div id="calendar-grid" class="calendar-grid"></div>
+                        </div>
+                        <aside class="schedule-side ai-card">
+                            <div class="side-head"><span><i class='bx bx-briefcase-alt-2'></i> Phân công tháng</span><b id="schedule-task-count">0</b></div>
+                            <div id="schedule-agenda" class="schedule-agenda"></div>
+                            <div class="side-head meeting-head"><span><i class='bx bx-video'></i> Lịch họp tháng</span><b id="meeting-count">0</b></div>
+                            <div id="meeting-agenda" class="schedule-agenda"></div>
+                        </aside>
                     </div>
                 </section>
 
@@ -190,7 +221,7 @@
                 <section id="view-productivity" class="app-view">
                     <div class="ai-card">
                         <h3><i class='bx bx-headphone'></i> Nhập Năng Suất Tổng Đài</h3>
-                        <div class="prod-header" style="display: flex; gap: 15px; align-items: center; margin-top: 15px; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid var(--text-muted);">
+                        <div class="prod-header" style="display: flex; gap: 15px; align-items: center; margin-top: 15px; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid var(--border-color);">
                             <input type="date" id="prod-date" class="form-input" style="width: 200px;">
                             <div class="prod-info-tags" style="display: flex; gap: 10px; flex-wrap: wrap;">
                                 <span id="prod-shift-tag" class="tag" style="background: var(--text-muted); font-size: 12.5px; padding: 6px 12px;">Ca: --</span>
@@ -208,111 +239,282 @@
                                     <div class="input-group-col"><label>SA Thông tin</label><input type="number" id="call-sa-info" class="form-input prod-input" value="0" min="0"></div>
                                     <div class="input-group-col"><label>SA Kỹ thuật</label><input type="number" id="call-sa-tech" class="form-input prod-input" value="0" min="0"></div>
                                 </div>
-                                <div class="total-box" style="margin-top: 20px; padding: 15px; background: var(--accent-glow); border-radius: 10px; text-align: center; border: 1px solid var(--accent-muted);">
-                                    <span style="font-size: 13px; color: var(--text-main);">Tổng Cuộc Gọi Hợp Lệ</span>
-                                    <div id="prod-total" style="font-size: 34px; font-weight: bold; color: var(--accent); font-family: 'Orbitron', sans-serif;">0</div>
-                                    <span id="prod-formula-hint" style="font-size: 11px; color: var(--text-muted); display:block; margin-top:4px;"></span>
+                                <div class="ai-card" style="margin-top:18px; text-align:center; background:var(--bg-card);">
+                                    <div style="font-size:12.5px; color:var(--text-muted); margin-bottom:6px;">Tổng cuộc gọi (tự động tính)</div>
+                                    <div id="prod-total" style="font-family:'Orbitron',sans-serif; font-size:30px; font-weight:700; color:var(--accent);">0</div>
                                 </div>
                             </div>
                             <div class="settings-col">
-                                <h4 style="margin-bottom: 15px; color: var(--warning); font-size:14px;">Chấm công / Vi phạm</h4>
-                                <div class="input-group-col" style="margin-bottom: 15px;"><label>Đi trễ (hh:mm:ss)</label><input type="text" id="time-late" class="form-input" placeholder="00:00:00"></div>
-                                <div class="input-group-col"><label>Về sớm (hh:mm:ss)</label><input type="text" id="time-early" class="form-input" placeholder="00:00:00"></div>
-                                <div style="margin-top: 45px; text-align: right;"><button id="btn-save-prod" class="btn-primary" style="width: 100%; justify-content: center; padding: 15px; font-size: 15px;"><i class='bx bx-save'></i> Lưu Năng suất</button></div>
+                                <h4 style="margin-bottom: 15px; color: var(--accent); font-size:14px;">Chấm công trong ngày</h4>
+                                <div class="input-group-col" style="margin-bottom:14px;">
+                                    <label>Thời gian đi trễ (hh:mm:ss)</label>
+                                    <input type="text" id="time-late" class="form-input" placeholder="00:00:00">
+                                </div>
+                                <div class="input-group-col">
+                                    <label>Thời gian về sớm (hh:mm:ss)</label>
+                                    <input type="text" id="time-early" class="form-input" placeholder="00:00:00">
+                                </div>
+                                <button id="btn-save-prod" class="btn-primary" style="margin-top:22px; width:100%; justify-content:center;"><i class='bx bx-save'></i> Lưu Năng Suất</button>
                             </div>
                         </div>
                     </div>
                 </section>
 
-                <!-- ============ CÀI ĐẶT ============ -->
+                <!-- ============ SOẠN EMAIL (gộp từ email-template-tool) ============ -->
+                <section id="view-email" class="app-view">
+                    <div class="email-subtabs" style="justify-content: space-between;">
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <button id="btnEmailComposeTab" class="email-subtab-btn active" type="button">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i> Soạn Email
+                            </button>
+                            <button id="btnEmailStatsTab" class="email-subtab-btn" type="button">
+                                <i class="fa-solid fa-chart-line"></i> Thống kê sử dụng
+                            </button>
+                        </div>
+                        <div id="statusPill" class="status-pill">
+                            <span class="dot"></span>
+                            <span id="statusPillLabel">Chưa chọn mẫu</span>
+                        </div>
+                    </div>
+
+                    <!-- ---- Tab con: Soạn Email ---- -->
+                    <div id="mainTab" class="email-tab-content active">
+                        <div class="border-b pb-4 flex justify-between items-end" style="border-color: var(--border-color);">
+                            <div>
+                                <h2 class="font-display" style="font-size:22px; font-weight:700; color: var(--text-main);">Khởi tạo Email nghiệp vụ</h2>
+                                <p style="font-size:13px; margin-top:4px; color: var(--text-muted);">Chuẩn hóa nội dung, rút ngắn thao tác và phục vụ xử lý nhanh trong quá trình soạn email.</p>
+                            </div>
+                            <button id="btnReset" class="btn-ghost" style="font-size:12px; padding: 8px 16px;">
+                                <i class="fa-solid fa-rotate-right mr-1"></i> Làm mới
+                            </button>
+                        </div>
+
+                        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6 mt-6">
+                            <div class="xl:col-span-5 flex flex-col gap-4">
+
+                                <div class="step-card">
+                                    <div class="step-head">
+                                        <span class="step-index font-mono">B1</span>
+                                        <span class="step-title">Chọn nghiệp vụ / mẫu email</span>
+                                    </div>
+                                    <div class="step-body">
+                                        <select id="templateSelector" class="soc-input w-full">
+                                            <option value="">-- Đang tải các mẫu email... --</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="step-card flex-1">
+                                    <div class="step-head">
+                                        <span class="step-index font-mono">B2</span>
+                                        <span class="step-title">Điền thông tin cần thiết</span>
+                                    </div>
+                                    <div id="dynamicForm" class="step-body space-y-4">
+                                        <p class="text-center text-sm italic py-10" style="color: var(--text-muted);">Vui lòng chọn một mẫu để hệ thống phục vụ tạo email...</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="xl:col-span-7 flex flex-col gap-4">
+                                <div class="workspace-panel p-4 flex justify-between items-center">
+                                    <h3 style="font-size:12.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color: var(--text-main);">
+                                        <i class="fa-regular fa-eye mr-1.5" style="color: var(--et-accent, #F26F21);"></i> Xem trước Email thực tế
+                                    </h3>
+                                    <button id="btnCopy" class="btn-accent" style="font-size:12px; padding:10px 20px;">
+                                        <i class="fa-regular fa-copy mr-1"></i> Copy Nội Dung
+                                    </button>
+                                </div>
+
+                                <div class="mail-frame flex-1 flex flex-col">
+                                    <div class="mail-toolbar">
+                                        <div class="mail-dots"><span></span><span></span><span></span></div>
+                                        <span style="font-size:10px; text-transform:uppercase; letter-spacing:0.05em; color: var(--text-muted);">Bản xem trước</span>
+                                    </div>
+                                    <div class="mail-meta">
+                                        <div class="mail-meta-row">
+                                            <span class="mail-meta-label font-mono">Subject</span>
+                                            <span id="emailSubject" class="truncate block"></span>
+                                        </div>
+                                        <div id="emailHeaders" class="hidden">
+                                            <div id="ccDisplay" class="mail-meta-row hidden">
+                                                <span class="mail-meta-label font-mono">CC</span>
+                                                <span id="ccValue" class="font-mono text-xs" style="color: var(--text-main);"></span>
+                                            </div>
+                                            <div id="bccDisplay" class="mail-meta-row hidden">
+                                                <span class="mail-meta-label font-mono">BCC</span>
+                                                <span id="bccValue" class="font-mono text-xs" style="color: var(--text-main);"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="p-8 overflow-y-auto" style="min-height: 420px;">
+                                        <div id="emailContent">
+                                            <div class="text-center mt-20 italic text-sm" style="color: var(--text-muted);">
+                                                Nội dung email sẽ xuất hiện tại đây...
+                                            </div>
+                                        </div>
+                                        <div id="emailSignature"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ---- Tab con: Thống kê sử dụng ---- -->
+                    <div id="statsTab" class="email-tab-content">
+                        <div class="mb-6">
+                            <h2 class="font-display" style="font-size:22px; font-weight:700; color: var(--text-main);">Thống kê sử dụng</h2>
+                            <p style="font-size:13px; margin-top:4px; color: var(--text-muted);">Báo cáo tổng hợp số lượt sử dụng mẫu email của toàn bộ nhân viên.</p>
+                        </div>
+                        <div id="statsTabContent"></div>
+                    </div>
+                </section>
+
+                <!-- ============ CÀI ĐẶT (TRANG GỘP CHUNG — G-Portal + Soạn Email) ============ -->
                 <section id="view-settings" class="app-view">
                     <div class="settings-grid">
-                        <div class="settings-col">
-                            <div class="ai-card">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                                    <h3 style="margin: 0; font-size:15px;"><i class='bx bx-time-five'></i> Ca làm việc</h3>
-                                    <div style="display: flex; gap: 5px;">
-                                        <button id="btn-tpl-shift" class="btn-icon" title="Tải file mẫu"><i class='bx bx-download'></i></button>
-                                        <label for="import-shift" class="btn-icon" title="Import Excel" style="margin:0;"><i class='bx bx-upload'></i></label>
-                                        <input type="file" id="import-shift" accept=".xlsx, .xls" style="display: none;">
-                                    </div>
-                                </div>
-                                <div class="input-group">
-                                    <input type="text" id="shift-code" placeholder="Mã Ca" style="max-width:80px;">
-                                    <input type="text" id="shift-name" placeholder="Tên ca (tuỳ chọn)">
-                                    <input type="text" id="shift-time" placeholder="07:15 - 14:45">
-                                    <button id="btn-add-shift" class="btn-primary"><i class='bx bx-plus'></i></button>
-                                </div>
-                                <ul id="shift-list" class="data-list"></ul>
+                        <div class="ai-card">
+                            <h3><i class='bx bx-time-five'></i> Ca làm việc</h3>
+                            <div class="input-group" style="margin-top:16px;">
+                                <input type="text" id="shift-code" placeholder="Mã Ca (VD: S1)">
+                                <input type="text" id="shift-name" placeholder="Tên Ca">
+                                <input type="text" id="shift-time" placeholder="07:15 - 14:45">
                             </div>
-
-                            <div class="ai-card" style="margin-top: 20px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                                    <h3 style="margin: 0; font-size:15px;"><i class='bx bx-trending-up'></i> Ca tăng cường (OT)</h3>
-                                    <div style="display: flex; gap: 5px;">
-                                        <button id="btn-tpl-otshift" class="btn-icon" title="Tải file mẫu"><i class='bx bx-download'></i></button>
-                                        <label for="import-otshift" class="btn-icon" title="Import Excel" style="margin:0;"><i class='bx bx-upload'></i></label>
-                                        <input type="file" id="import-otshift" accept=".xlsx, .xls" style="display: none;">
-                                    </div>
-                                </div>
-                                <div class="input-group">
-                                    <input type="text" id="otshift-code" placeholder="Mã (vd S+)" style="max-width:80px;">
-                                    <input type="text" id="otshift-name" placeholder="Tên ca (tuỳ chọn)">
-                                    <input type="text" id="otshift-time" placeholder="14:45 - 18:00">
-                                    <button id="btn-add-otshift" class="btn-primary"><i class='bx bx-plus'></i></button>
-                                </div>
-                                <ul id="otshift-list" class="data-list"></ul>
+                            <div style="display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap;">
+                                <button id="btn-add-shift" class="btn-primary"><i class='bx bx-plus'></i> Thêm</button>
+                                <button id="btn-tpl-shift" class="btn-ghost"><i class='bx bx-download'></i> File mẫu</button>
+                                <label for="import-shift" class="btn-ghost" style="cursor:pointer; display:inline-flex; align-items:center; gap:6px;"><i class='bx bx-upload'></i> Import Excel</label>
+                                <input type="file" id="import-shift" accept=".xlsx, .xls" style="display:none;">
                             </div>
-
-                            <div class="ai-card" style="margin-top: 20px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                                    <h3 style="margin: 0; font-size:15px;"><i class='bx bx-task'></i> Phân công công việc (PCCV)</h3>
-                                    <div style="display: flex; gap: 5px;">
-                                        <button id="btn-tpl-task" class="btn-icon" title="Tải file mẫu"><i class='bx bx-download'></i></button>
-                                        <label for="import-task" class="btn-icon" title="Import Excel" style="margin:0;"><i class='bx bx-upload'></i></label>
-                                        <input type="file" id="import-task" accept=".xlsx, .xls" style="display: none;">
-                                    </div>
-                                </div>
-                                <div class="input-group"><input type="text" id="task-code" placeholder="Mã" style="max-width:80px;"><input type="text" id="task-name" placeholder="Tên PCCV"><button id="btn-add-task" class="btn-primary"><i class='bx bx-plus'></i></button></div>
-                                <ul id="task-list" class="data-list"></ul>
-                            </div>
+                            <ul id="shift-list" class="data-list"></ul>
                         </div>
 
-                        <div class="settings-col">
-                            <div class="ai-card">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                                    <h3 style="margin: 0; font-size:15px;"><i class='bx bx-group'></i> Nhân sự</h3>
-                                    <div style="display: flex; gap: 5px;">
-                                        <button id="btn-tpl-staff" class="btn-icon" title="Tải file mẫu"><i class='bx bx-download'></i></button>
-                                        <label for="import-staff" class="btn-icon" title="Import Excel" style="margin:0;"><i class='bx bx-upload'></i></label>
-                                        <input type="file" id="import-staff" accept=".xlsx, .xls" style="display: none;">
+                        <div class="ai-card">
+                            <h3><i class='bx bx-trending-up'></i> Ca tăng cường (OT)</h3>
+                            <div class="input-group" style="margin-top:16px;">
+                                <input type="text" id="otshift-code" placeholder="Mã Ca (VD: S+)">
+                                <input type="text" id="otshift-name" placeholder="Tên Ca">
+                                <input type="text" id="otshift-time" placeholder="14:45 - 18:00">
+                            </div>
+                            <div style="display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap;">
+                                <button id="btn-add-otshift" class="btn-primary"><i class='bx bx-plus'></i> Thêm</button>
+                                <button id="btn-tpl-otshift" class="btn-ghost"><i class='bx bx-download'></i> File mẫu</button>
+                                <label for="import-otshift" class="btn-ghost" style="cursor:pointer; display:inline-flex; align-items:center; gap:6px;"><i class='bx bx-upload'></i> Import Excel</label>
+                                <input type="file" id="import-otshift" accept=".xlsx, .xls" style="display:none;">
+                            </div>
+                            <ul id="otshift-list" class="data-list"></ul>
+                        </div>
+
+                        <div class="ai-card">
+                            <h3><i class='bx bx-check-square'></i> Phân công công việc (PCCV)</h3>
+                            <div class="input-group" style="margin-top:16px;">
+                                <input type="text" id="task-code" placeholder="Mã (VD: CHAT)">
+                                <input type="text" id="task-name" placeholder="Tên PCCV">
+                            </div>
+                            <div style="display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap;">
+                                <button id="btn-add-task" class="btn-primary"><i class='bx bx-plus'></i> Thêm</button>
+                                <button id="btn-tpl-task" class="btn-ghost"><i class='bx bx-download'></i> File mẫu</button>
+                                <label for="import-task" class="btn-ghost" style="cursor:pointer; display:inline-flex; align-items:center; gap:6px;"><i class='bx bx-upload'></i> Import Excel</label>
+                                <input type="file" id="import-task" accept=".xlsx, .xls" style="display:none;">
+                            </div>
+                            <ul id="task-list" class="data-list"></ul>
+                        </div>
+
+                        <div class="ai-card">
+                            <h3><i class='bx bx-group'></i> Nhân sự</h3>
+                            <div class="input-group" style="margin-top:16px;">
+                                <input type="text" id="staff-id" placeholder="Mã NV (VD: NV01)">
+                                <input type="text" id="staff-name" placeholder="Họ và tên">
+                            </div>
+                            <div style="display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap;">
+                                <button id="btn-add-staff" class="btn-primary"><i class='bx bx-plus'></i> Thêm</button>
+                                <button id="btn-tpl-staff" class="btn-ghost"><i class='bx bx-download'></i> File mẫu</button>
+                                <label for="import-staff" class="btn-ghost" style="cursor:pointer; display:inline-flex; align-items:center; gap:6px;"><i class='bx bx-upload'></i> Import Excel</label>
+                                <input type="file" id="import-staff" accept=".xlsx, .xls" style="display:none;">
+                            </div>
+                            <ul id="staff-list" class="data-list"></ul>
+                        </div>
+
+                        <div class="ai-card span-2">
+                            <h3><i class='bx bx-slider-alt'></i> Tham số KPI</h3>
+                            <div class="prod-grid" style="margin-top:16px; grid-template-columns: repeat(3, 1fr);">
+                                <div class="input-group-col"><label>Hệ số quy đổi SA (x)</label><input type="number" id="sa-modifier" class="form-input" value="3" step="0.1"></div>
+                                <div class="input-group-col"><label>Chỉ tiêu cuộc gọi / tháng</label><input type="number" id="kpi-target" class="form-input" value="2000"></div>
+                                <div class="input-group-col"><label>Hệ số quy đổi công OT</label><input type="number" id="coeff-ot-cong" class="form-input" value="0.5" step="0.1"></div>
+                            </div>
+                            <button id="btn-save-coeff" class="btn-primary" style="margin-top:16px;"><i class='bx bx-save'></i> Lưu Tham số</button>
+                        </div>
+
+                        <!-- ===== Cấu hình module Soạn Email (gộp từ email-template-tool) ===== -->
+                        <div class="ai-card span-2" style="margin-top: 6px; padding-bottom: 8px;">
+                            <h3 style="margin-bottom: 4px;"><i class='bx bx-envelope'></i> Cấu hình module Soạn Email</h3>
+                            <p style="font-size:12.5px; color: var(--text-muted); margin-bottom: 18px;">Áp dụng cho toàn bộ mẫu email ở mục "Soạn Email" — nhận diện Vùng miền để tự gắn CC, và địa chỉ BCC mặc định.</p>
+
+                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                <div class="settings-card">
+                                    <div class="flex items-center gap-3 mb-4">
+                                        <div class="settings-icon" style="background: rgba(242,111,33,0.14); color: #d9590f;">
+                                            <i class="fa-solid fa-envelope"></i>
+                                        </div>
+                                        <h3 style="font-weight:700; font-size:15px; color: var(--text-main);">Email BCC Mặc Định</h3>
+                                    </div>
+                                    <label class="soc-label">Địa chỉ email BCC:</label>
+                                    <input type="email" id="settingsBccEmail" class="soc-input w-full mb-3" placeholder="Đang nạp dữ liệu...">
+                                </div>
+
+                                <div class="settings-card">
+                                    <div class="flex items-center gap-3 mb-4">
+                                        <div class="settings-icon" style="background: var(--accent-glow); color: var(--success);">
+                                            <i class="fa-solid fa-location-dot"></i>
+                                        </div>
+                                        <h3 style="font-weight:700; font-size:15px; color: var(--text-main);">Miền Nam</h3>
+                                    </div>
+                                    <label class="soc-label">Email Miền Nam:</label>
+                                    <input type="text" id="settingsSouthEmail" class="soc-input w-full mb-4" placeholder="Đang nạp dữ liệu...">
+                                    <label class="soc-label">Ký tự nhận diện:</label>
+                                    <input type="text" id="settingsSouthPatterns" class="soc-input w-full font-mono" placeholder="Đang nạp dữ liệu...">
+                                </div>
+
+                                <div class="settings-card">
+                                    <div class="flex items-center gap-3 mb-4">
+                                        <div class="settings-icon" style="background: var(--accent-glow); color: var(--accent);">
+                                            <i class="fa-solid fa-location-dot"></i>
+                                        </div>
+                                        <h3 style="font-weight:700; font-size:15px; color: var(--text-main);">Miền Bắc</h3>
+                                    </div>
+                                    <label class="soc-label">Email Miền Bắc:</label>
+                                    <input type="text" id="settingsNorthEmail" class="soc-input w-full mb-4" placeholder="Đang nạp dữ liệu...">
+                                    <label class="soc-label">Ký tự nhận diện:</label>
+                                    <input type="text" id="settingsNorthPatterns" class="soc-input w-full font-mono" placeholder="Đang nạp dữ liệu...">
+                                </div>
+
+                                <div class="settings-card" style="background: rgba(56,189,248,0.08); border-color: rgba(56,189,248,0.25);">
+                                    <div class="flex items-start gap-3">
+                                        <i class="fa-solid fa-lightbulb text-2xl mt-1" style="color: var(--accent);"></i>
+                                        <div>
+                                            <h4 style="font-weight:700; margin-bottom:8px; color: var(--text-main);">Nhận diện Tự động</h4>
+                                            <p style="font-size:13px; color: var(--text-muted);">Hệ thống sẽ tự động nhận diện vùng miền dựa trên 2 ký tự đầu của số hợp đồng khi soạn email.</p>
+                                        </div>
                                     </div>
                                 </div>
-                                <div class="input-group"><input type="text" id="staff-id" placeholder="Mã NV"><input type="text" id="staff-name" placeholder="Họ và Tên"><button id="btn-add-staff" class="btn-primary"><i class='bx bx-plus'></i></button></div>
-                                <ul id="staff-list" class="data-list"></ul>
                             </div>
 
-                            <div class="ai-card" style="margin-top: 20px;">
-                                <h3 style="font-size:15px;"><i class='bx bx-calculator'></i> Tham số KPI &amp; Công thức</h3>
-                                <div class="input-group" style="margin-bottom: 10px; margin-top:14px;"><label style="width: 190px;">Hệ số SA (Thông tin+Kỹ thuật):</label><input type="number" id="sa-modifier" class="form-input" value="3" min="1" step="0.1"></div>
-                                <div class="input-group" style="margin-bottom: 10px;"><label style="width: 190px;">Mục tiêu KPI / tháng:</label><input type="number" id="kpi-target" class="form-input" value="2000" min="0"></div>
-                                <div class="input-group"><label style="width: 190px;">Hệ số quy đổi 1 ngày OT → công:</label><input type="number" id="coeff-ot-cong" class="form-input" value="0.5" min="0" step="0.1"></div>
-                                <div style="text-align: right; margin-top:8px;"><button id="btn-save-coeff" class="btn-primary">Lưu Tham Số</button></div>
-                            </div>
+                            <div id="emailSettingsLockNotice" class="mt-5 p-5 bg-amber-50 border border-amber-200 text-amber-900 text-sm rounded-xl shadow-sm"></div>
                         </div>
                     </div>
                 </section>
+
             </div>
         </main>
     </div>
 
-    <!-- ===================== MODAL HIỆU CHỈNH CA ===================== -->
+    <!-- ===================== MODAL HIỆU CHỈNH NGÀY ===================== -->
     <div id="day-modal" class="modal-overlay">
         <div class="modal-content ai-card">
-            <div class="modal-header"><h3 id="modal-date-title">--/--/----</h3><button class="btn-close-modal" id="btn-close-modal" type="button"><i class='bx bx-x'></i></button></div>
+            <div class="modal-header">
+                <h3 id="modal-date-title">Hiệu chỉnh ngày</h3>
+                <button class="btn-close-modal" id="btn-close-modal" type="button"><i class='bx bx-x'></i></button>
+            </div>
             <div class="modal-body">
-                <div class="modal-preview" id="modal-preview">Chưa có dữ liệu</div>
-
                 <div class="input-group">
                     <label style="width:110px;">Phân loại ca:</label>
                     <select id="modal-shift-type" class="form-select">
@@ -334,33 +536,75 @@
                     <select id="modal-help" class="form-select"></select>
                 </div>
             </div>
-            <div class="modal-footer" style="margin-top: 16px; text-align: right;"><button id="btn-save-day" class="btn-primary">Lưu</button></div>
+            <div class="modal-footer" style="margin-top: 16px; display:flex; justify-content: space-between; align-items:center; gap:12px;">
+                <button id="btn-delete-day" class="btn-ghost danger" type="button" style="display:none;"><i class='bx bx-trash'></i> Xóa lịch</button>
+                <button id="btn-save-day" class="btn-primary" type="button" style="margin-left:auto;">Lưu</button>
+            </div>
         </div>
+    </div>
+
+    <!-- ===================== MODAL LỊCH HỌP ===================== -->
+    <div id="meeting-modal" class="modal-overlay">
+        <div class="modal-content ai-card meeting-modal-content">
+            <div class="modal-header"><h3 id="meeting-modal-title">Thêm lịch họp</h3><button class="btn-close-modal" id="btn-close-meeting-modal" type="button"><i class='bx bx-x'></i></button></div>
+            <div class="modal-body">
+                <div class="meeting-form-grid">
+                    <div class="input-group-col"><label>Ngày họp</label><input type="date" id="meeting-date" class="form-input"></div>
+                    <div class="input-group-col"><label>Bắt đầu</label><input type="time" id="meeting-start" class="form-input" value="09:00"></div>
+                    <div class="input-group-col"><label>Kết thúc</label><input type="time" id="meeting-end" class="form-input" value="10:00"></div>
+                    <div class="input-group-col"><label>Hình thức</label><select id="meeting-mode" class="form-select"><option value="offline">Offline</option><option value="online">Online</option></select></div>
+                </div>
+                <div class="input-group-col"><label>Tiêu đề</label><input type="text" id="meeting-title" class="form-input" placeholder="VD: Họp giao ban tuần"></div>
+                <div class="input-group-col"><label>Nội dung</label><textarea id="meeting-content" class="form-input" rows="4" placeholder="Nội dung / agenda cuộc họp"></textarea></div>
+                <div class="input-group-col"><label id="meeting-location-label">Địa điểm / phòng họp</label><input type="text" id="meeting-location" class="form-input" placeholder="VD: Văn phòng Q1 - Phòng họp A"></div>
+            </div>
+            <div class="modal-footer meeting-footer">
+                <button id="btn-delete-meeting" class="btn-ghost danger" type="button"><i class='bx bx-trash'></i> Xóa</button>
+                <button id="btn-save-meeting" class="btn-primary" type="button"><i class='bx bx-save'></i> Lưu lịch họp</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== TOAST (dùng chung, module Soạn Email) ===================== -->
+    <div id="toast" class="fixed bottom-12 right-6 px-5 py-3.5 rounded-2xl text-xs font-bold tracking-wide hidden flex items-center gap-3" style="position:fixed; z-index: 1200;">
+        <i class="fa-solid fa-circle-check text-lg" style="color: var(--success);"></i> <span id="toast-message">Đã sao chép thành công!</span>
     </div>
 
     <!-- ===================== LIBRARIES & EXTERNAL SCRIPTS ===================== -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script async defer src="https://accounts.google.com/gsi/client"></script>
-    <script async defer src="https://apis.google.com/js/api.js"></script>
+    <script async src="https://apis.google.com/js/api.js"></script>
+    <script async src="https://accounts.google.com/gsi/client"></script>
 
-    <!-- ===================== CORE SCRIPTS (Loading order is CRITICAL) ===================== -->
-    <!-- 1. App state initialization -->
+    <!-- Core: đăng nhập Google DUY NHẤT + Router + Lưu trữ Drive -->
     <script src="js/core/app.js"></script>
-
-    <!-- 2. Google API initialization & sync functions (MUST before auth.js) -->
     <script src="js/core/googleSync.js"></script>
-
-    <!-- 3. Authentication flow (uses tokenClient from googleSync.js) -->
-    <script src="js/core/auth.js"></script>
-
-    <!-- 4. Drive persistence (uses auth state) -->
     <script src="js/core/drive.js"></script>
 
-    <!-- ===================== MODULE SCRIPTS ===================== -->
+    <!-- Modules G-Portal gốc -->
     <script src="js/modules/settings/settings.js"></script>
     <script src="js/modules/schedule/schedule.js"></script>
     <script src="js/modules/productivity/productivity.js"></script>
     <script src="js/modules/dashboard/dashboard.js"></script>
+
+    <!-- Module Soạn Email (gộp từ email-template-tool) -->
+    <script src="js/modules/email-tool/region-detector.js"></script>
+    <script src="js/modules/email-tool/engine.js"></script>
+    <script src="js/modules/email-tool/settings-panel.js"></script>
+    <script src="js/modules/email-tool/ui-enhancements.js"></script>
+
+    <script src="js/modules/email-tool/templates/1_xin_thong_tin.js"></script>
+    <script src="js/modules/email-tool/templates/2_da_xu_ly.js"></script>
+    <script src="js/modules/email-tool/templates/3_bao_hong.js"></script>
+    <script src="js/modules/email-tool/templates/4_thanh_toan.js"></script>
+    <script src="js/modules/email-tool/templates/5_kpdv.js"></script>
+    <script src="js/modules/email-tool/templates/6_thanh_ly.js"></script>
+    <script src="js/modules/email-tool/templates/7_phuc_dap.js"></script>
+    <script src="js/modules/email-tool/templates/8_o_failure.js"></script>
+    <script src="js/modules/email-tool/templates/9_o_payment.js"></script>
+    <script src="js/modules/email-tool/templates/10_o_service.js"></script>
+    <script src="js/modules/email-tool/templates/11_gui_noi_bo.js"></script>
+    <script src="js/modules/email-tool/templates/12_gui_hoa_don.js"></script>
+
 </body>
 </html>
