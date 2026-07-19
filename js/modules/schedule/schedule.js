@@ -1,12 +1,17 @@
 /**
  * schedule.js - Module Lịch làm việc
  *
- * CẬP NHẬT MỚI: bổ sung nút "Kiểm tra đồng bộ" (checkSyncWithGoogleHandler) —
- * gọi window.reconcileMonthWithGoogle() (định nghĩa ở js/core/googleSync.js)
- * để đọc lại Google Calendar (Lịch làm + Lịch họp) và Google Tasks trong
- * đúng tháng đang xem, khớp lại dữ liệu Portal nếu người dùng đã sửa/xoá
- * trực tiếp trên Google. Sau khi khớp xong, tự lưu lại lên Drive và render
- * lại lịch/agenda.
+ * CẬP NHẬT MỚI NHẤT:
+ * - FIX: ngày vừa có ca chính vừa có OT với khung giờ khác/không liền kề
+ *   (VD Ca chính 14:45-22:00, OT 11:00-14:00) giờ được đẩy thành 2 sự kiện
+ *   Lịch riêng biệt (window.syncOtCalendarEvent, định nghĩa ở googleSync.js)
+ *   thay vì chỉ 1 sự kiện dùng giờ ca chính khiến OT "biến mất" trên Calendar.
+ * - Bổ sung nút "Kiểm tra đồng bộ" (checkSyncWithGoogleHandler) — gọi
+ *   window.reconcileMonthWithGoogle() (định nghĩa ở js/core/googleSync.js)
+ *   để đọc lại Google Calendar (Lịch làm + OT riêng + Lịch họp) và Google
+ *   Tasks trong đúng tháng đang xem, khớp lại dữ liệu Portal nếu người dùng
+ *   đã sửa/xoá trực tiếp trên Google. Sau khi khớp xong, tự lưu lại lên
+ *   Drive và render lại lịch/agenda.
  */
 
 window.monthlyScheduleData = window.monthlyScheduleData || {};
@@ -249,6 +254,7 @@ function deleteDayEdit() {
 
     if (typeof AppState !== 'undefined' && AppState.isLoggedIn) {
         if (typeof window.deleteWorkCalendarEvent === 'function') window.deleteWorkCalendarEvent(dateKey);
+        if (typeof window.deleteOtCalendarEvent === 'function') window.deleteOtCalendarEvent(dateKey);
         if (typeof window.deleteGoogleTask === 'function') window.deleteGoogleTask(dateKey);
     }
 }
@@ -420,6 +426,7 @@ async function syncToGoogleEcosystem() {
 
         if (!hasMainShift && !hasOT) {
             if (typeof window.deleteWorkCalendarEvent === 'function') await window.deleteWorkCalendarEvent(key);
+            if (typeof window.deleteOtCalendarEvent === 'function') await window.deleteOtCalendarEvent(key);
         } else {
             let shiftTime = "08:00 - 17:00";
 
@@ -436,6 +443,33 @@ async function syncToGoogleEcosystem() {
             if (hasMainShift && hasOT) desc.push(`OT: ${dayData.ot}`);
 
             if (typeof syncCalendarEvent === 'function') await syncCalendarEvent(key, dayData, shiftTime, desc.join('\n'));
+
+            // MỚI: khi vừa có ca chính vừa có OT, OT là một KHUNG GIỜ RIÊNG
+            // (có thể không liền kề ca chính, VD Ca chính 14:45-22:00 & OT
+            // 11:00-14:00) nên phải đẩy thành 1 sự kiện Lịch độc lập, dùng
+            // đúng giờ cấu hình của mã OT — không thể gộp chung 1 sự kiện với
+            // ca chính như trước (khiến OT bị "mất tích" trên Calendar).
+            if (hasMainShift && hasOT) {
+                let otTime = null;
+                if (window.portalSettings && window.portalSettings.otShifts) {
+                    const otConf = window.portalSettings.otShifts.find(s => s.code === dayData.ot);
+                    if (otConf) otTime = otConf.time;
+                }
+                if (otTime && typeof window.syncOtCalendarEvent === 'function') {
+                    let otDesc = [`Ca chính: ${dayData.shift}`];
+                    if (dayData.task) otDesc.push(`PCCV: ${dayData.task}`);
+                    await window.syncOtCalendarEvent(key, dayData, otTime, otDesc.join('\n'));
+                } else if (typeof window.deleteOtCalendarEvent === 'function') {
+                    // Không tìm thấy cấu hình giờ cho mã OT này (VD đã bị xoá
+                    // khỏi Cài đặt) -> không có gì để tạo, dọn sự kiện OT cũ nếu có.
+                    await window.deleteOtCalendarEvent(key);
+                }
+            } else if (typeof window.deleteOtCalendarEvent === 'function') {
+                // Chỉ còn ca chính (không OT) hoặc chỉ còn OT-đơn (đã gộp vào
+                // sự kiện chính ở trên) -> đảm bảo không còn sự kiện OT rời
+                // rạc thừa từ lần đồng bộ trước.
+                await window.deleteOtCalendarEvent(key);
+            }
         }
 
         if (dayData.task && dayData.task.trim() !== '') {

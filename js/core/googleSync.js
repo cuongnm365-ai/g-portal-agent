@@ -501,6 +501,71 @@ window.deleteWorkCalendarEvent = async function (dateStr) {
     await deleteCalendarEventsByProps(dateStr, getConfiguredCalendarId('work'), { gportalType: 'work' });
 };
 
+// ---------- MỚI — TĂNG CƯỜNG (OT) LÀ SỰ KIỆN LỊCH RIÊNG ----------
+// Trước đây khi một ngày vừa có CA CHÍNH vừa có TĂNG CƯỜNG (OT), hệ thống chỉ
+// tạo DUY NHẤT một sự kiện Lịch dùng khung giờ của ca chính; thông tin OT chỉ
+// được ghi chú dạng chữ trong mô tả (description), KHÔNG có khung giờ riêng
+// trên Calendar. Với những ca mà khung giờ OT tách biệt / không liền kề với
+// ca chính (VD: Ca chính C2 14:45-22:00, OT T+ 11:00-14:00) thì OT hoàn toàn
+// không xuất hiện trên Google Calendar.
+// Nay: mỗi khi CÙNG LÚC có ca chính + OT, hệ thống tạo THÊM một sự kiện Lịch
+// thứ hai, dùng đúng khung giờ cấu hình của mã OT đó, đánh dấu riêng bằng
+// extendedProperties.private.gportalType = 'work-ot' để không lẫn với sự
+// kiện ca chính (gportalType = 'work') khi tìm/xoá/cập nhật.
+function buildOtEventTitle(dayData) {
+    return `${dayData.ot} - Tăng cường (OT)`;
+}
+window.buildOtEventTitle = buildOtEventTitle;
+
+window.syncOtCalendarEvent = async function (dateStr, dayData, otShiftTime, description) {
+    if (!AppState.isLoggedIn || !gapi.client) return;
+    if (!otShiftTime) return;
+
+    const calendarId = getConfiguredCalendarId('work');
+    await deleteCalendarEventsByProps(dateStr, calendarId, { gportalType: 'work-ot' });
+
+    let startTimeStr = "08:00:00";
+    let endTimeStr = "17:00:00";
+    if (otShiftTime.includes("-")) {
+        const parts = otShiftTime.split("-");
+        startTimeStr = parts[0].trim() + ":00";
+        endTimeStr = parts[1].trim() + ":00";
+    }
+
+    // Cùng nguyên tắc "qua đêm" như ca chính: nếu giờ kết thúc <= giờ bắt đầu
+    // thì khung giờ OT kết thúc vào ngày hôm sau.
+    let endDateStr = dateStr;
+    if (endTimeStr <= startTimeStr) {
+        endDateStr = addDaysToDateKey(dateStr, 1);
+    }
+
+    const startDateTime = `${dateStr}T${startTimeStr}+07:00`;
+    const endDateTime = `${endDateStr}T${endTimeStr}+07:00`;
+
+    const event = {
+        summary: buildOtEventTitle(dayData),
+        description: description,
+        start: { dateTime: startDateTime, timeZone: 'Asia/Ho_Chi_Minh' },
+        end: { dateTime: endDateTime, timeZone: 'Asia/Ho_Chi_Minh' },
+        extendedProperties: { private: { gportalType: 'work-ot' } }
+    };
+
+    try {
+        await gapi.client.calendar.events.insert({
+            calendarId: calendarId,
+            resource: event
+        });
+        console.log(`Đã đồng bộ sự kiện Tăng cường (OT) ngày ${dateStr} thành công.`);
+    } catch (err) {
+        console.error("Lỗi đồng bộ sự kiện OT: ", err);
+    }
+};
+
+window.deleteOtCalendarEvent = async function (dateStr) {
+    if (!AppState.isLoggedIn || !gapi.client) return;
+    await deleteCalendarEventsByProps(dateStr, getConfiguredCalendarId('work'), { gportalType: 'work-ot' });
+};
+
 window.deleteMeetingCalendarEvent = async function (meeting) {
     if (!AppState.isLoggedIn || !gapi.client || !meeting) return;
     await deleteCalendarEventsByProps(meeting.date, getConfiguredCalendarId('meeting'), {
@@ -639,6 +704,14 @@ function parseShiftEventTitle(title) {
     return { shiftPart, type: 'chinhchu', trade: '', help: '' };
 }
 
+// Đọc ngược tiêu đề sự kiện OT riêng do buildOtEventTitle() tạo ra
+// (dạng "{otCode} - Tăng cường (OT)") để lấy lại mã ca tăng cường.
+function parseOtEventTitle(title) {
+    if (!title) return '';
+    const idx = title.indexOf(' - ');
+    return (idx === -1 ? title : title.substring(0, idx)).trim();
+}
+
 function parseShiftEventDescription(desc) {
     const result = { ot: '', task: '' };
     if (!desc) return result;
@@ -696,22 +769,45 @@ window.reconcileMonthWithGoogle = async function (monthDate) {
     let changedSchedule = false;
     let changedMeeting = false;
 
-    // ---------- 1. LỊCH LÀM VIỆC ----------
+    // ---------- 1. LỊCH LÀM VIỆC (ca chính) ----------
     const workEvents = await findEventsByExtendedPropsInRange(timeMin, timeMax, workCalendarId, { gportalType: 'work' });
     const googleScheduleMap = {};
     workEvents.forEach(ev => {
         const dateKey = eventDateKey(ev);
         if (!dateKey) return;
         const parsedTitle = parseShiftEventTitle(ev.summary);
-        const parsedDesc = parseShiftEventDescription(ev.description);
         googleScheduleMap[dateKey] = {
             type: parsedTitle.type,
             shift: parsedTitle.shiftPart || 'OFF',
-            ot: parsedDesc.ot,
-            task: parsedDesc.task,
+            // OT không còn lấy từ text mô tả (dễ lỗi thời) — sẽ được gán lại
+            // ở bước 1b dựa trên sự kiện Lịch OT riêng (gportalType=work-ot),
+            // nguồn xác thực chính xác nhất kể từ khi OT có sự kiện riêng.
+            ot: '',
+            task: '',
             trade: parsedTitle.type === 'doica' ? parsedTitle.trade : '',
             help: parsedTitle.type === 'trucho' ? parsedTitle.help : ''
         };
+    });
+
+    // ---------- 1b. SỰ KIỆN TĂNG CƯỜNG (OT) RIÊNG ----------
+    // Chỉ áp dụng cho những ngày VỪA CÓ ca chính VỪA CÓ OT (lúc đó OT được tạo
+    // thành 1 sự kiện Lịch độc lập, gportalType=work-ot). Trường hợp OT-đơn
+    // (không có ca chính) vẫn nằm gọn trong 1 sự kiện gportalType=work như cũ
+    // (shiftPart của event đó chính là mã OT), nên không cần xử lý thêm ở đây.
+    const otEvents = await findEventsByExtendedPropsInRange(timeMin, timeMax, workCalendarId, { gportalType: 'work-ot' });
+    otEvents.forEach(ev => {
+        const dateKey = eventDateKey(ev);
+        if (!dateKey) return;
+        const otCode = parseOtEventTitle(ev.summary);
+        if (!otCode) return;
+        if (googleScheduleMap[dateKey]) {
+            googleScheduleMap[dateKey].ot = otCode;
+        } else {
+            // Hi hữu: có sự kiện OT riêng nhưng không tìm thấy sự kiện ca
+            // chính tương ứng (VD người dùng lỡ xoá nhầm event ca chính) ->
+            // vẫn giữ lại thông tin OT dưới dạng "chỉ có OT".
+            googleScheduleMap[dateKey] = { type: 'chinhchu', shift: 'OFF', ot: otCode, task: '', trade: '', help: '' };
+        }
     });
 
     // ---------- 2. TASKS PCCV trong tháng (nguồn chính xác nhất cho PCCV) ----------
