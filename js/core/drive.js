@@ -8,6 +8,7 @@
  */
 window.getJsonFromDrive = async function(fileName, folderId) {
     try {
+        // Tìm file trong folder cụ thể
         const response = await gapi.client.drive.files.list({
             q: `name='${fileName}' and '${folderId}' in parents and trashed=false`,
             spaces: 'drive',
@@ -21,7 +22,7 @@ window.getJsonFromDrive = async function(fileName, folderId) {
                 fileId: fileId,
                 alt: 'media'
             });
-            return fileData.result;
+            return fileData.result; // Trả về JSON object
         }
         return null;
     } catch (err) {
@@ -40,6 +41,7 @@ window.saveJsonToDrive = async function(fileName, dataObj, folderId) {
             return;
         }
 
+        // Bước 1: Kiểm tra xem file đã tồn tại trong folder này chưa
         const response = await gapi.client.drive.files.list({
             q: `name='${fileName}' and '${folderId}' in parents and trashed=false`,
             spaces: 'drive',
@@ -48,7 +50,8 @@ window.saveJsonToDrive = async function(fileName, dataObj, folderId) {
 
         const files = response.result.files;
         const fileContent = JSON.stringify(dataObj, null, 2);
-
+        
+        // Chuẩn bị dữ liệu để upload
         const file = new Blob([fileContent], { type: 'application/json' });
         const metadata = {
             name: fileName,
@@ -59,19 +62,23 @@ window.saveJsonToDrive = async function(fileName, dataObj, folderId) {
         let method = '';
 
         if (files && files.length > 0) {
+            // ĐÃ TỒN TẠI -> UPDATE FILE (PATCH)
             const fileId = files[0].id;
             uploadUrl = `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`;
             method = 'PATCH';
         } else {
+            // CHƯA TỒN TẠI -> TẠO MỚI (POST) VÀ CHỈ ĐỊNH PARENTS
             metadata.parents = [folderId];
             uploadUrl = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
             method = 'POST';
         }
 
+        // Tạo form data chứa metadata và nội dung
         const form = new FormData();
         form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
         form.append('file', file);
 
+        // Upload thông qua fetch API
         const token = gapi.client.getToken().access_token;
         const res = await fetch(uploadUrl, {
             method: method,
@@ -95,7 +102,7 @@ window.saveJsonToDrive = async function(fileName, dataObj, folderId) {
 window.loadSettingsFromDrive = async function() {
     if (!window.GPORTAL_FOLDERS || !AppState.isLoggedIn) return;
     console.log('Đang tải Settings từ Drive...');
-
+    
     try {
         const settingsData = await getJsonFromDrive('settings.json', window.GPORTAL_FOLDERS.settings);
         if (settingsData) {
@@ -104,6 +111,7 @@ window.loadSettingsFromDrive = async function() {
             if (typeof renderSettingsUI === 'function') renderSettingsUI();
             if (typeof renderSettings === 'function') renderSettings();
         } else {
+            // Cấu hình mặc định nếu chưa có file
             if(typeof getDefaultSettings === 'function') {
                 window.portalSettings = getDefaultSettings();
             }
