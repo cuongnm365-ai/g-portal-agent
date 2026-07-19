@@ -1,5 +1,12 @@
 /**
  * schedule.js - Module Lịch làm việc
+ *
+ * CẬP NHẬT MỚI: bổ sung nút "Kiểm tra đồng bộ" (checkSyncWithGoogleHandler) —
+ * gọi window.reconcileMonthWithGoogle() (định nghĩa ở js/core/googleSync.js)
+ * để đọc lại Google Calendar (Lịch làm + Lịch họp) và Google Tasks trong
+ * đúng tháng đang xem, khớp lại dữ liệu Portal nếu người dùng đã sửa/xoá
+ * trực tiếp trên Google. Sau khi khớp xong, tự lưu lại lên Drive và render
+ * lại lịch/agenda.
  */
 
 window.monthlyScheduleData = window.monthlyScheduleData || {};
@@ -51,6 +58,7 @@ function initScheduleEvents() {
     document.getElementById('btn-save-day').addEventListener('click', saveDayEdit);
     bindIfPresent('btn-delete-day', 'click', deleteDayEdit);
     document.getElementById('btn-sync-calendar').addEventListener('click', syncToGoogleEcosystem);
+    bindIfPresent('btn-check-sync', 'click', checkSyncWithGoogleHandler);
     document.getElementById('btn-add-meeting').addEventListener('click', () => openMeetingModal());
     document.getElementById('btn-close-meeting-modal').addEventListener('click', closeMeetingModal);
     document.getElementById('meeting-modal').addEventListener('click', (e) => { if (e.target.id === 'meeting-modal') closeMeetingModal(); });
@@ -445,4 +453,46 @@ async function syncToGoogleEcosystem() {
     }
 
     alert("✅ Đã đồng bộ Lịch, Task và Lịch họp lên Google thành công!");
+}
+
+/**
+ * MỚI — "Kiểm tra đồng bộ": đọc ngược dữ liệu từ Google Calendar/Tasks trong
+ * tháng đang xem về lại Portal. Dùng khi người dùng đã tự sửa/xoá sự kiện
+ * hoặc Task trực tiếp trên Google mà không thao tác qua Portal.
+ */
+async function checkSyncWithGoogleHandler() {
+    if (typeof AppState === 'undefined' || !AppState.isLoggedIn) return alert("Vui lòng đăng nhập Google trước!");
+    if (typeof window.reconcileMonthWithGoogle !== 'function') {
+        return alert("Chức năng kiểm tra đồng bộ chưa sẵn sàng, vui lòng tải lại trang.");
+    }
+
+    const btn = document.getElementById('btn-check-sync');
+    const originalHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Đang kiểm tra...`;
+    }
+
+    try {
+        const result = await window.reconcileMonthWithGoogle(currentDate);
+
+        if (result.changedSchedule) await saveScheduleToDrive();
+        if (result.changedMeeting) await saveMeetingsToDrive();
+
+        renderCalendar();
+
+        if (result.changed) {
+            alert("✅ Đã kiểm tra xong. Dữ liệu Lịch làm việc / Lịch họp trên Portal đã được cập nhật lại cho khớp với những thay đổi (sửa/xoá) trên Google Calendar & Google Tasks trong tháng này.");
+        } else {
+            alert("Dữ liệu trên Portal đã khớp hoàn toàn với Google Calendar/Tasks trong tháng này. Không có gì cần cập nhật.");
+        }
+    } catch (err) {
+        console.error('Lỗi kiểm tra đồng bộ với Google:', err);
+        alert("Có lỗi xảy ra khi kiểm tra đồng bộ với Google. Vui lòng thử lại sau.");
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
+    }
 }
