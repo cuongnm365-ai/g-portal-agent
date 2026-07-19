@@ -3,13 +3,12 @@
  * Quản lý: Shifts, OT Shifts, Tasks, Staffs, Coefficients
  * Tương tác: Google Drive qua drive.js
  *
- * FIX QUAN TRỌNG (so với bản cũ):
- * - Trước đây mọi nơi trong file này đều gọi renderSettingsUI() để vẽ lại
- *   danh sách Ca làm việc / Ca tăng cường / PCCV / Nhân sự, NHƯNG hàm này
- *   chưa từng được định nghĩa -> toàn bộ trang Cài đặt luôn trống rỗng dù
- *   dữ liệu (window.portalSettings) vẫn tồn tại và được các trang khác
- *   (vd: modal hiệu chỉnh lịch) đọc đúng bình thường.
- * - Đã bổ sung đầy đủ hàm renderSettingsUI() ở cuối file.
+ * Đây là phần Cài Đặt "gốc" của G-Portal (Ca làm việc / Ca tăng cường / PCCV /
+ * Nhân sự / Tham số KPI). Trang Cài Đặt (view-settings) giờ có thêm 2 card mới
+ * ở CUỐI trang cho cấu hình Email (BCC / Vùng miền) — do
+ * js/modules/email-tool/settings-panel.js + region-detector.js quản lý — cả
+ * hai sống chung một view HTML nhưng độc lập hoàn toàn về logic/ID, không có
+ * xung đột tên hàm hay phần tử.
  */
 
 
@@ -30,7 +29,6 @@ function getInputValue(id) {
 // ==================== CƠ CHẾ LOAD DATA & RENDER ĐẦU TIÊN ====================
 
 function loadLocalSettings() {
-    // Tải dữ liệu lưu tạm ở máy lên ngay lập tức để giao diện không bị trống
     const saved = localStorage.getItem('gportal_settings');
     if (saved) {
         try {
@@ -42,13 +40,12 @@ function loadLocalSettings() {
         window.portalSettings = getDefaultSettings();
     }
 
-    // Ép render ra giao diện (dùng 1 trong 2 tên hàm để chống lỗi)
     if (typeof renderSettingsUI === 'function') renderSettingsUI();
     else if (typeof renderSettings === 'function') renderSettings();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    loadLocalSettings(); // Gọi ngay khi tải trang
+    loadLocalSettings();
     try {
         initSettingsEvents();
     } catch (e) {
@@ -82,9 +79,6 @@ function initSettingsEvents() {
 
     // === THAM SỐ KPI ===
     bindIfExists('btn-save-coeff', 'click', saveCoefficients);
-
-    // Lưu ý: Tự động tải từ Drive đã được xử lý bên auth.js / googleSync.js
-    // khi đăng nhập thành công, nên không gọi lại ở đây để tránh đụng độ.
 }
 
 // ==================== CA LÀM VIỆC ====================
@@ -102,20 +96,17 @@ function addShift() {
     if (!window.portalSettings) window.portalSettings = getDefaultSettings();
     if (!window.portalSettings.shifts) window.portalSettings.shifts = [];
 
-    // Check duplicate
     if (window.portalSettings.shifts.find(s => s.code === code)) {
         alert('Mã Ca đã tồn tại!');
         return;
     }
 
-    // Tạo màu random
     const colors = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4'];
     const color = colors[Math.floor(Math.random() * colors.length)];
 
     window.portalSettings.shifts.push({ code, name, time, color });
     saveSettingsToDriveAndRefresh();
 
-    // Clear inputs
     document.getElementById('shift-code').value = '';
     document.getElementById('shift-name').value = '';
     document.getElementById('shift-time').value = '';
@@ -464,15 +455,6 @@ function getDefaultSettings() {
     };
 }
 
-/**
- * FIX CHÍNH: Hàm này trước đây được gọi ở khắp nơi trong file nhưng CHƯA TỪNG
- * được định nghĩa -> đây là nguyên nhân khiến trang Cài đặt luôn trống trơn
- * (dù dữ liệu window.portalSettings vẫn có, và trang Lịch làm việc vẫn đọc
- * đúng dữ liệu này vì nó truy cập trực tiếp, không qua hàm render).
- *
- * Hàm sẽ vẽ lại 4 danh sách (Ca làm việc, Ca tăng cường, PCCV, Nhân sự)
- * và đổ dữ liệu Tham số KPI vào các ô input tương ứng.
- */
 function renderSettingsUI() {
     if (!window.portalSettings) return;
 
@@ -550,21 +532,15 @@ function renderSettingsUI() {
 }
 window.renderSettingsUI = renderSettingsUI;
 
-/**
- * 3 Nhiệm vụ chính: Lưu máy (chống mất dữ liệu), Render Giao diện ngay, Đẩy lên Drive ngầm
- */
 async function saveSettingsToDriveAndRefresh() {
-    // 1. Lưu ngay vào máy ảo trình duyệt để F5 không bao giờ bị mất
     localStorage.setItem('gportal_settings', JSON.stringify(window.portalSettings));
 
-    // 2. Kích hoạt vẽ lại giao diện Settings lập tức
     if (typeof renderSettingsUI === 'function') {
         renderSettingsUI();
     } else if (typeof renderSettings === 'function') {
         renderSettings();
     }
 
-    // 3. Đẩy lên Drive ở chế độ ngầm (nếu đang online)
     if (typeof AppState !== 'undefined' && AppState.isLoggedIn && typeof window.saveSettingsToDrive === 'function') {
         await window.saveSettingsToDrive(window.portalSettings);
     }

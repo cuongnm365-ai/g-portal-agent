@@ -1,22 +1,5 @@
 /**
  * schedule.js - Module Lịch làm việc
- *
- * BẢN SỬA LỖI NGÀY 12/07 (mới nhất):
- * - Thêm chức năng "Xóa lịch" cho từng ngày ngay trong modal hiệu chỉnh
- *   ngày (nút mới "btn-delete-day" ở index.html). Khi xoá: xoá dữ liệu
- *   ngày đó khỏi window.monthlyScheduleData, lưu lại lên Drive, VÀ đồng bộ
- *   xoá cả sự kiện Google Calendar lẫn Google Task tương ứng của ngày đó
- *   (nếu đã đăng nhập Google) — xem hàm deleteDayEdit().
- * - Cập nhật lời gọi tới syncCalendarEvent(): trước đây chỉ truyền vào 1
- *   chuỗi tên ca (shiftLabel), giờ truyền cả object dayData để bên
- *   googleSync.js dựng đúng tiêu đề sự kiện theo mẫu chấm công mới
- *   ("S2 - Chính Chủ", "S2 - Trực hộ HuyenNTM", "S2 - Đổi ca DungDM").
- * - Bớt trùng lặp thông tin "Đổi ca"/"Trực hộ" trong phần mô tả (description)
- *   của sự kiện Calendar vì thông tin này giờ đã nằm sẵn trong tiêu đề.
- *
- * (Giữ nguyên toàn bộ các fix trước đó về diff Git dính vào code, hàm
- * openDayModal/saveDayEdit/handleExcelUpload bị thiếu hoặc trùng lặp,
- * renderCalendar vẽ lặp 2 lần...)
  */
 
 window.monthlyScheduleData = window.monthlyScheduleData || {};
@@ -26,8 +9,6 @@ let editingDateKey = null;
 let editingMeetingId = null;
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Mỗi bước bọc try/catch riêng: nếu 1 bước lỗi, các bước còn lại (đặc biệt là
-    // gắn sự kiện cho nút File Mẫu / Import / Đóng modal) vẫn được thực thi bình thường.
     try { initCalendar(); } catch (e) { console.error('initCalendar error:', e); }
     try { initScheduleEvents(); } catch (e) { console.error('initScheduleEvents error:', e); }
 });
@@ -40,7 +21,6 @@ function initScheduleEvents() {
     document.getElementById('btn-prev-month').addEventListener('click', () => { currentDate.setMonth(currentDate.getMonth() - 1); changeMonthHandler(); });
     document.getElementById('btn-next-month').addEventListener('click', () => { currentDate.setMonth(currentDate.getMonth() + 1); changeMonthHandler(); });
 
-    // Download Lịch Mẫu
     document.getElementById('btn-download-schedule-tpl').addEventListener('click', () => {
         const ws_data = [["Ngày", "Mã Ca", "OT", "Mã PCCV", "Phân loại", "Nhân sự liên quan"]];
         ws_data.push(["01/07/2026", "S1", "S+", "CHAT", "Chính chủ", ""]);
@@ -54,7 +34,6 @@ function initScheduleEvents() {
 
     document.getElementById('excel-upload').addEventListener('change', handleExcelUpload);
 
-    // Modal Events
     document.getElementById('btn-close-modal').addEventListener('click', closeDayModal);
     document.getElementById('day-modal').addEventListener('click', (e) => {
         if (e.target.id === 'day-modal') closeDayModal();
@@ -80,9 +59,6 @@ function initScheduleEvents() {
     document.getElementById('meeting-mode').addEventListener('change', updateMeetingLocationLabel);
 }
 
-// Gắn sự kiện an toàn cho các nút có thể chưa tồn tại trên những bản HTML cũ hơn
-// (VD: nút "Xóa lịch" mới thêm) để không làm gãy toàn bộ initScheduleEvents() nếu
-// index.html chưa được cập nhật kèm theo.
 function bindIfPresent(id, eventName, handler) {
     const el = document.getElementById(id);
     if (el) el.addEventListener(eventName, handler);
@@ -201,7 +177,6 @@ window.openDayModal = function (dateKey) {
         document.getElementById('modal-help').innerHTML = staffOptions;
     }
 
-    // Đổ dữ liệu hiện có của ngày vào form
     document.getElementById('modal-shift-type').value = dayData.type || 'chinhchu';
     document.getElementById('modal-shift').value = dayData.shift || 'OFF';
     document.getElementById('modal-ot').value = dayData.ot || '';
@@ -209,11 +184,9 @@ window.openDayModal = function (dateKey) {
     document.getElementById('modal-trade').value = dayData.trade || '';
     document.getElementById('modal-help').value = dayData.help || '';
 
-    // Hiện/ẩn đúng khối "Đổi ca" / "Trực hộ" theo phân loại ca đang lưu
     document.getElementById('modal-trade-group').style.display = dayData.type === 'doica' ? 'block' : 'none';
     document.getElementById('modal-help-group').style.display = dayData.type === 'trucho' ? 'block' : 'none';
 
-    // Chỉ hiện nút "Xóa lịch" khi ngày này đã có dữ liệu (tránh xoá "khoảng trống")
     const deleteBtn = document.getElementById('btn-delete-day');
     if (deleteBtn) deleteBtn.style.display = existingData ? 'inline-flex' : 'none';
 
@@ -237,8 +210,6 @@ function saveDayEdit() {
     renderCalendar();
     saveScheduleToDrive();
 
-    // Đồng bộ ngay lập tức Google Task theo PCCV vừa lưu (nếu đã đăng nhập),
-    // để không phải đợi người dùng bấm nút "Đồng bộ Google" thủ công.
     if (typeof AppState !== 'undefined' && AppState.isLoggedIn) {
         if (task && task.trim() !== '') {
             let taskNote = [];
@@ -251,8 +222,6 @@ function saveDayEdit() {
     }
 }
 
-// MỚI: Xóa toàn bộ dữ liệu lịch làm việc của 1 ngày, đồng bộ xóa cả sự kiện
-// Google Calendar lẫn Google Task tương ứng (nếu đã đăng nhập Google).
 function deleteDayEdit() {
     if (!editingDateKey) return;
     if (!window.monthlyScheduleData[editingDateKey]) {
@@ -276,8 +245,6 @@ function deleteDayEdit() {
     }
 }
 
-// Đọc & parse file Excel lịch làm việc. Cấu trúc cột theo đúng file mẫu:
-// Ngày, Mã Ca, OT, Mã PCCV, Phân loại, Nhân sự liên quan.
 function handleExcelUpload(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -429,15 +396,6 @@ function deleteMeetingEdit() {
     saveMeetingsToDrive();
 }
 
-/**
- * Đồng bộ toàn bộ tháng đang xem lên Google Calendar + Google Tasks + Lịch họp.
- * - Nếu ngày OFF và không OT -> xoá sự kiện Calendar nếu có.
- * - Nếu có ca chính hoặc OT -> tạo/cập nhật sự kiện Calendar theo đúng khung giờ,
- *   tiêu đề theo mẫu "Mã ca - Chính Chủ / Trực hộ Tên / Đổi ca Tên".
- * - Nếu có PCCV -> tạo/cập nhật Google Task (tên Task = đúng tên PCCV, không có
- *   tiền tố); nếu PCCV bị gỡ -> xoá Task tương ứng.
- * - Cuối cùng đồng bộ toàn bộ lịch họp trong tháng.
- */
 async function syncToGoogleEcosystem() {
     if (typeof AppState === 'undefined' || !AppState.isLoggedIn) return alert("Vui lòng đăng nhập Google trước!");
 
@@ -452,9 +410,7 @@ async function syncToGoogleEcosystem() {
         const hasMainShift = dayData.shift && dayData.shift !== 'OFF';
         const hasOT = dayData.ot && dayData.ot.trim() !== '';
 
-        // ----- 1. ĐỒNG BỘ GOOGLE CALENDAR -----
         if (!hasMainShift && !hasOT) {
-            // Ngày nghỉ hoàn toàn, không OT -> xoá sự kiện lịch nếu có từ lần đồng bộ trước
             if (typeof window.deleteWorkCalendarEvent === 'function') await window.deleteWorkCalendarEvent(key);
         } else {
             let shiftTime = "08:00 - 17:00";
@@ -463,14 +419,10 @@ async function syncToGoogleEcosystem() {
                 const conf = window.portalSettings.shifts.find(s => s.code === dayData.shift);
                 if (conf) shiftTime = conf.time;
             } else if (!hasMainShift && hasOT && window.portalSettings && window.portalSettings.otShifts) {
-                // Ca chính OFF nhưng có tăng cường -> lấy giờ theo ca OT
                 const conf = window.portalSettings.otShifts.find(s => s.code === dayData.ot);
                 if (conf) shiftTime = conf.time;
             }
 
-            // Thông tin "Đổi ca"/"Trực hộ" đã có sẵn trong tiêu đề sự kiện (xem
-            // buildShiftEventTitle trong googleSync.js) nên phần mô tả chỉ cần
-            // bổ sung PCCV và OT (nếu có cả ca chính lẫn tăng cường).
             let desc = [];
             if (dayData.task) desc.push(`PCCV: ${dayData.task}`);
             if (hasMainShift && hasOT) desc.push(`OT: ${dayData.ot}`);
@@ -478,7 +430,6 @@ async function syncToGoogleEcosystem() {
             if (typeof syncCalendarEvent === 'function') await syncCalendarEvent(key, dayData, shiftTime, desc.join('\n'));
         }
 
-        // ----- 2. ĐỒNG BỘ GOOGLE TASKS (PCCV) -----
         if (dayData.task && dayData.task.trim() !== '') {
             let taskNote = [];
             if (hasMainShift) taskNote.push(`Ca: ${dayData.shift}`);
@@ -489,7 +440,6 @@ async function syncToGoogleEcosystem() {
         }
     }
 
-    // ----- 3. ĐỒNG BỘ LỊCH HỌP -----
     for (const meeting of meetingItems) {
         if (typeof syncMeetingCalendarEvent === 'function') await syncMeetingCalendarEvent(meeting);
     }
