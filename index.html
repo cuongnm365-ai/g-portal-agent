@@ -195,7 +195,7 @@
                         <div class="toolbar-left">
                             <button id="btn-prev-month" class="btn-icon"><i class='bx bx-chevron-left'></i></button>
                             <h3 id="current-month-display" style="min-width: 140px; text-align: center; color: var(--accent); font-size:15px;">Tháng --/----</h3>
-                            <button id="btn-next-month" class="btn-icon"><i class='bx bx-chevron-right'></i></button>
+                            <button id="btn-dash-next-month" id="btn-next-month" class="btn-icon"><i class='bx bx-chevron-right'></i></button>
                         </div>
                         <div class="toolbar-right">
                             <button id="btn-download-schedule-tpl" class="btn-primary" style="background: #2563eb;"><i class='bx bx-download'></i> File Mẫu</button>
@@ -594,10 +594,29 @@
     <script src="js/modules/email-tool/templates/6_thanh_ly.js"></script>
     <script src="js/modules/email-tool/templates/7_phuc_dap.js"></script>
     <script src="js/modules/email-tool/templates/11_gui_noi_bo.js"></script>
-    <script src="js/modules/email-tool/templates/12_gui_hoa_don.js"></script>
     <script src="js/modules/email-tool/templates/8_o_failure.js"></script>
     <script src="js/modules/email-tool/templates/9_o_payment.js"></script>
     <script src="js/modules/email-tool/templates/10_o_service.js"></script>
-    
+    <script src="js/modules/email-tool/templates/12_gui_hoa_don.js"></script>
+
+    <script>
+      !(function () {
+        const livechatUrl = 'https://portal-sop.fpt.vn/livechat-service/widget.css';
+        document
+          .getElementsByTagName("head")[0]
+          .insertAdjacentHTML(
+            "beforeend",
+            `<link rel='stylesheet' href=${livechatUrl} />`
+          );
+        const e = document.createElement("div");
+        e.setAttribute("id", "livechat-sop"), document.body.appendChild(e);
+        localStorage.setItem('sop_id', '3364');
+        const t = document.createElement("script");
+        t.setAttribute("type", "module"),
+          t.setAttribute("crossorigin", ""),
+          (t.src = "https://portal-sop.fpt.vn/livechat-service/Widget.js"),
+          document.body.appendChild(t);
+      })();
+    </script>
 </body>
 </html>
