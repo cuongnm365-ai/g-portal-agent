@@ -1,7 +1,35 @@
 /**
  * app.js - Khởi tạo ứng dụng: Theme, Router (chuyển trang), Login Gate, Sidebar
  *
- * CẬP NHẬT MỚI NHẤT:
+ * CẬP NHẬT MỚI NHẤT — FIX LỖI "KHÔNG GIỮ ĐƯỢC ĐĂNG NHẬP":
+ * - NGUYÊN NHÂN GỐC: trước đây, ngay khi trang tải xong (DOMContentLoaded),
+ *   app.js kiểm tra access token trong localStorage — nếu đã hết hạn (access
+ *   token của Google Identity Services chỉ sống khoảng 1 giờ) thì XOÁ NGAY
+ *   khỏi localStorage. Vấn đề là việc xoá này xảy ra RẤT SỚM, trước khi thư
+ *   viện Google (gapi/gis) kịp tải xong. Khi googleSync.js chạy tới đoạn thử
+ *   "khôi phục phiên ngầm" (silent SSO, không cần nhập lại mật khẩu), nó kiểm
+ *   tra lại localStorage thì token đã bị app.js xoá mất từ trước — nên điều
+ *   kiện kiểm tra "có token cũ để thử khôi phục" luôn sai, và việc khôi phục
+ *   ngầm KHÔNG BAO GIỜ được thực thi. Kết quả: mỗi khi access token hết hạn
+ *   (rất thường xuyên vì chỉ sống 1 giờ), người dùng bị đá thẳng về màn hình
+ *   đăng nhập dù họ vẫn còn phiên đăng nhập Google hợp lệ trên trình duyệt đó.
+ * - CÁCH SỬA: app.js giờ KHÔNG tự xoá token nữa — việc dọn dẹp token hết hạn
+ *   được chuyển hẳn sang cho googleSync.js đảm nhiệm, SAU KHI đã thử khôi
+ *   phục ngầm mà thất bại thật sự. app.js chỉ còn nhiệm vụ quyết định hiển
+ *   thị gì lúc khởi động:
+ *     1) Token còn hạn -> vào thẳng ứng dụng.
+ *     2) Token hết hạn/không có NHƯNG trình duyệt này từng đăng nhập thành
+ *        công trước đó (có "dấu vết phiên" gportal_session_marker) -> hiện
+ *        màn hình đăng nhập kèm dòng chữ "Đang khôi phục phiên đăng nhập...",
+ *        rồi để googleSync.js thử mượn lại phiên SSO của Google.
+ *     3) Chưa từng đăng nhập trên trình duyệt này -> màn hình đăng nhập bình
+ *        thường, không có thông báo gì thêm.
+ * - "Dấu vết phiên" (gportal_session_marker) là điểm mới quan trọng: nó KHÔNG
+ *   có hạn sử dụng như access token, chỉ bị xoá khi người dùng bấm Đăng xuất.
+ *   Đây là "trí nhớ" cho googleSync.js biết trình duyệt/máy này đã từng được
+ *   người dùng cho phép đăng nhập, nên có thể tự tin thử khôi phục ngầm mỗi
+ *   lần mở lại trang, thay vì phải đợi người dùng bấm nút "Đăng nhập với
+ *   Google" theo cách thủ công.
  * - Bổ sung chức năng GHIM (pin) thanh điều hướng bên trái: người dùng bấm nút
  *   ghim ở góc trên sidebar để chọn "luôn mở rộng" thay vì mặc định tự thu gọn
  *   và chỉ mở khi rê chuột vào. Trạng thái ghim được lưu ở localStorage
@@ -16,6 +44,13 @@
 
 const AppState = { currentView: 'dashboard', theme: 'dark', isLoggedIn: false, userProfile: null };
 window.AppState = AppState;
+
+// "Dấu vết phiên đăng nhập" — sống độc lập với access token (không có hạn),
+// chỉ bị xoá khi người dùng chủ động Đăng xuất (xem handleSignoutClick trong
+// googleSync.js). googleSync.js sẽ đọc lại đúng key này để quyết định có nên
+// thử khôi phục phiên ngầm (silent SSO) hay không.
+const SESSION_MARKER_KEY = 'gportal_session_marker';
+window.GPORTAL_SESSION_MARKER_KEY = SESSION_MARKER_KEY;
 
 const VIEW_META = {
     dashboard: { title: 'Dashboard', subtitle: 'Tổng quan năng suất & KPI cá nhân' },
@@ -41,19 +76,26 @@ document.addEventListener('DOMContentLoaded', () => {
         window.switchView(initialView);
     }
 
-    // Cờ AppState.isLoggedIn được set NGAY (đồng bộ) nếu còn token hợp lệ trong localStorage,
-    // không đợi googleSync.js chạy xong (chi tiết xem googleSync.js).
+    // ---- QUYẾT ĐỊNH TRẠNG THÁI HIỂN THỊ BAN ĐẦU (không tự xoá token ở đây) ----
     const savedToken = localStorage.getItem('gapi_token');
     const tokenExpiry = parseInt(localStorage.getItem('gapi_token_expiry') || '0', 10);
+    const hasSessionMarker = localStorage.getItem(SESSION_MARKER_KEY) === '1';
+
     if (savedToken && Date.now() < tokenExpiry) {
+        // Token còn hạn -> vào thẳng ứng dụng ngay, không cần chờ đợi gì thêm.
         AppState.isLoggedIn = true;
         window.showApp();
+    } else if (hasSessionMarker) {
+        // Access token có thể đã hết hạn hoặc chưa kịp nạp lại (đóng tab lâu),
+        // nhưng trình duyệt này TỪNG đăng nhập thành công trước đó -> hiển thị
+        // màn hình đăng nhập kèm trạng thái "đang khôi phục", để googleSync.js
+        // thử mượn lại phiên SSO của Google ngay khi thư viện Google sẵn sàng
+        // (xem attemptSilentSessionRestore() trong googleSync.js).
+        window.showLogin('Đang khôi phục phiên đăng nhập trước đó...');
     } else {
-        if (savedToken) {
-            localStorage.removeItem('gapi_token');
-            localStorage.removeItem('gapi_token_expiry');
-        }
-        window.showLogin(savedToken ? 'Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.' : '');
+        // Chưa từng đăng nhập trên trình duyệt/máy này -> màn hình đăng nhập
+        // bình thường, không có thông báo gì thêm.
+        window.showLogin('');
     }
 });
 
@@ -224,5 +266,5 @@ window.showLogin = function (message) {
     if (shell) shell.style.display = 'none';
     if (login) login.style.display = 'flex';
     const status = document.getElementById('login-status');
-    if (status && message) status.innerText = message;
+    if (status && message !== undefined) status.innerText = message;
 };
