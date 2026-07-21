@@ -65,7 +65,8 @@ const TOKEN_REFRESH_MIN_DELAY_MS = 30000; // 30 giây
 // lập với access token, chỉ bị xoá khi người dùng chủ động Đăng xuất. Có cờ
 // này thì mỗi lần mở lại trang sẽ luôn thử khôi phục ngầm (silent SSO), bất kể
 // access token cũ trong localStorage còn hay đã bị dọn.
-const SESSION_MARKER_KEY = window.GPORTAL_SESSION_MARKER_KEY || 'gportal_session_marker';
+// Thay const bằng window để dùng chung với app.js, không bao giờ bị lỗi trùng lặp
+window.GPORTAL_SESSION_MARKER_KEY = window.GPORTAL_SESSION_MARKER_KEY || 'gportal_session_marker';
 
 let tokenClient;
 let gapiInited = false;
