@@ -1,6 +1,22 @@
 /**
  * drive.js - Google Drive Data Persistence
  * Quản lý: Load Settings, Save/Load Schedule, Save/Load Productivity
+ *
+ * BẢN VÁ LỖI: "Đổi ca / Trực hộ không hiện danh sách nhân sự + popup hiệu
+ * chỉnh lịch bị treo"
+ * -------------------------------------------------------------------------
+ * NGUYÊN NHÂN: loadSettingsFromDrive() trước đây GHI ĐÈ TOÀN BỘ
+ * window.portalSettings bằng đúng những gì đọc được từ settings.json trên
+ * Drive, không merge với getDefaultSettings() như loadLocalSettings() vẫn
+ * làm. Nếu file settings.json trên Drive được tạo từ trước khi có tính năng
+ * Nhân sự (hoặc thiếu field nào đó vì lý do bất kỳ), window.portalSettings
+ * .staffs sẽ là undefined -> dropdown chọn người Đổi ca/Trực hộ trong modal
+ * hiệu chỉnh lịch build ra rỗng, không có ai để chọn.
+ *
+ * FIX: sau khi tải từ Drive, luôn Object.assign với getDefaultSettings() rồi
+ * đảm bảo từng mảng con (shifts/otShifts/tasks/staffs) và coefficients luôn
+ * tồn tại hợp lệ, bất kể file trên Drive cũ/mới/thiếu field.
+ * -------------------------------------------------------------------------
  */
 
 /**
@@ -91,25 +107,53 @@ window.saveJsonToDrive = async function(fileName, dataObj, folderId) {
 
 /**
  * 3. Load cấu hình (Settings) từ Google Drive
+ *    FIX: luôn merge với getDefaultSettings() + đảm bảo từng mảng con hợp lệ,
+ *    để tránh trường hợp file cũ trên Drive thiếu field (VD "staffs") khiến
+ *    các dropdown liên quan (Đổi ca/Trực hộ) bị trống.
  */
 window.loadSettingsFromDrive = async function() {
     if (!window.GPORTAL_FOLDERS || !AppState.isLoggedIn) return;
     console.log('Đang tải Settings từ Drive...');
 
+    const defaults = (typeof getDefaultSettings === 'function') ? getDefaultSettings() : {
+        shifts: [], otShifts: [], tasks: [], staffs: [],
+        coefficients: { saModifier: 3, kpiTarget: 2000, coeffOtCong: 0.5 }
+    };
+
     try {
         const settingsData = await getJsonFromDrive('settings.json', window.GPORTAL_FOLDERS.settings);
-        if (settingsData) {
-            window.portalSettings = settingsData;
-            console.log('✓ Đã load Settings thành công.');
-            if (typeof renderSettingsUI === 'function') renderSettingsUI();
-            if (typeof renderSettings === 'function') renderSettings();
-        } else {
-            if(typeof getDefaultSettings === 'function') {
-                window.portalSettings = getDefaultSettings();
-            }
+
+        // Merge: dữ liệu thật từ Drive được ưu tiên, nhưng field nào thiếu thì
+        // lấy từ mặc định — không bao giờ để undefined lọt xuống UI.
+        const merged = Object.assign({}, defaults, settingsData || {});
+        merged.shifts = Array.isArray(merged.shifts) ? merged.shifts : (defaults.shifts || []);
+        merged.otShifts = Array.isArray(merged.otShifts) ? merged.otShifts : (defaults.otShifts || []);
+        merged.tasks = Array.isArray(merged.tasks) ? merged.tasks : (defaults.tasks || []);
+        merged.staffs = Array.isArray(merged.staffs) ? merged.staffs : (defaults.staffs || []);
+        merged.coefficients = Object.assign({}, defaults.coefficients, merged.coefficients || {});
+
+        window.portalSettings = merged;
+        console.log(`✓ Đã load Settings thành công. (Nhân sự: ${merged.staffs.length}, Ca: ${merged.shifts.length}, OT: ${merged.otShifts.length}, PCCV: ${merged.tasks.length})`);
+
+        if (typeof renderSettingsUI === 'function') renderSettingsUI();
+        if (typeof renderSettings === 'function') renderSettings();
+
+        // Nếu Drive vốn dĩ chưa có file settings.json (settingsData === null),
+        // hoặc file thiếu field -> lưu lại ngay bản đã merge lên Drive để các
+        // lần load sau không còn thiếu nữa.
+        if (!settingsData || Object.keys(settingsData).length < Object.keys(defaults).length) {
+            window.saveSettingsToDrive(merged);
         }
     } catch (error) {
         console.error('Lỗi load Settings:', error);
+        // Dù lỗi mạng/API, vẫn phải đảm bảo có 1 bộ Settings hợp lệ trong bộ
+        // nhớ, nếu không các màn hình khác (VD modal hiệu chỉnh lịch) sẽ bị
+        // treo vì window.portalSettings undefined.
+        if (!window.portalSettings) {
+            window.portalSettings = defaults;
+            if (typeof renderSettingsUI === 'function') renderSettingsUI();
+        }
+        alert('Không thể tải Cấu hình (Ca làm việc/Nhân sự/PCCV) từ Google Drive. Vui lòng kiểm tra kết nối mạng và thử tải lại trang. Trong lúc chờ, hệ thống đang dùng cấu hình tạm.');
     }
 };
 
@@ -123,6 +167,7 @@ window.saveSettingsToDrive = async function(settingsData) {
         window.portalSettings = settingsData;
     } catch (error) {
         console.error('Lỗi lưu Settings:', error);
+        alert('Có lỗi khi lưu Cấu hình lên Google Drive. Vui lòng thử lại.');
     }
 };
 
