@@ -1,35 +1,34 @@
 /**
  * googleSync.js - Google Auth + Drive + Calendar + Tasks
  *
- * BẢN VÁ LỖI "GIỮ ĐĂNG NHẬP" (mới nhất):
+ * BẢN VÁ MỚI: "KHÔNG ĐÁ NGƯỜI DÙNG VỀ MÀN HÌNH LOGIN KHI ĐANG LÀM VIỆC"
  * -------------------------------------------------------------------------
- * BỐI CẢNH: Google Identity Services (token client) dùng cho ứng dụng thuần
- * client-side (không backend) KHÔNG cấp refresh token — chỉ cấp access token
- * sống ngắn (~1 giờ). Cách duy nhất để "giữ đăng nhập" lâu dài mà không bắt
- * người dùng nhập lại mật khẩu là liên tục MƯỢN LẠI phiên SSO (cookie đăng
- * nhập Google) của chính trình duyệt đó bằng cách gọi
- * tokenClient.requestAccessToken({ prompt: '' }) — lệnh này chạy NGẦM, không
- * hiện popup, miễn là người dùng vẫn còn đăng nhập Google & đã từng đồng ý
- * cấp quyền cho ứng dụng trên trình duyệt/máy đó. Đây cũng chính là lý do
- * hành vi "cùng máy thì giữ đăng nhập, đổi máy thì phải đăng nhập lại" là
- * điều tự nhiên (vì máy khác không có cookie phiên Google đó).
+ * BỐI CẢNH / VÌ SAO CẦN VÁ:
+ * G-Portal dùng google.accounts.oauth2 (token client) để xin quyền THẬT SỰ
+ * ghi vào Drive/Calendar/Tasks — khác với repo email-template-tool cũ (chỉ
+ * dùng google.accounts.id để LẤY DANH TÍNH hiển thị tên/email, không xin
+ * quyền API nào cả). Vì là app thuần client-side (không backend) nên token
+ * loại OAuth chỉ sống ~1 giờ và KHÔNG có refresh token — cách duy nhất để
+ * "giữ đăng nhập" là liên tục mượn lại phiên SSO của trình duyệt bằng
+ * requestAccessToken({ prompt: '' }) chạy NGẦM. Khi việc mượn ngầm này thất
+ * bại (cookie bên thứ 3 bị chặn — mặc định trên Safari, đôi khi Chrome; tab
+ * bị "ngủ" qua giờ hẹn làm mới; máy sleep...), bản trước đây sẽ XÓA SẠCH
+ * phiên và ép về màn hình đăng nhập toàn màn hình — đây chính là nguyên
+ * nhân cảm giác "popup đăng nhập cứ hiện lại liên tục" khi đang thao tác.
  *
- * LỖI ĐÃ SỬA: trước đây cơ chế khôi phục ngầm này gần như KHÔNG BAO GIỜ được
- * kích hoạt, vì app.js xoá token hết hạn khỏi localStorage NGAY khi trang vừa
- * tải (trước khi thư viện Google kịp sẵn sàng) — khiến điều kiện kiểm tra
- * "có token cũ để thử khôi phục" ở đây luôn sai. Nay app.js không tự xoá
- * token nữa (xem app.js), và toàn bộ logic khôi phục ngầm được gom lại thành
- * hàm attemptSilentSessionRestore() bên dưới, dựa vào "dấu vết phiên đăng
- * nhập" (SESSION_MARKER_KEY) — một cờ KHÔNG có hạn sử dụng, chỉ mất khi
- * người dùng chủ động Đăng xuất — để quyết định có nên thử mượn lại phiên
- * SSO hay không, bất kể access token cũ còn tồn tại trong localStorage hay
- * không.
- *
- * BỔ SUNG: lắng nghe sự kiện visibilitychange — khi người dùng quay lại tab
- * sau một thời gian tab bị ẩn/máy ngủ (lúc đó setTimeout hẹn giờ làm mới token
- * có thể không chạy đúng giờ do trình duyệt tạm dừng tab nền), hệ thống sẽ
- * kiểm tra lại hạn token và làm mới ngay nếu cần, tránh trường hợp quay lại
- * tab mà thấy đã "rớt" đăng nhập.
+ * CÁCH VÁ: Không thể bỏ OAuth token client (bắt buộc phải có để ghi Drive/
+ * Calendar/Tasks), nhưng có thể mô phỏng lại "cảm giác im lặng" của repo cũ
+ * bằng cách phân biệt 2 tình huống:
+ *   1) LẦN ĐẦU MỞ TRANG, chưa từng có phiên nào -> vẫn hiện màn hình đăng
+ *      nhập như bình thường (không có gì để hiển thị nếu không đăng nhập).
+ *   2) ĐANG DÙNG APP GIỮA CHỪNG (app đã hiển thị rồi) mà việc làm mới ngầm
+ *      thất bại -> KHÔNG xóa phiên, KHÔNG ép về màn hình login. Thay vào đó
+ *      chỉ hiện 1 banner nhỏ không chặn thao tác, kèm nút "Kết nối lại" để
+ *      người dùng bấm khi rảnh (bấm nút = thao tác của người dùng nên trình
+ *      duyệt luôn cho phép mở cửa sổ xác thực, không bị chặn popup).
+ *   Ngoài ra, trước khi "đầu hàng" và hiện banner, hệ thống sẽ tự thử làm
+ *   mới ngầm thêm 2 lần nữa (có độ trễ tăng dần) để vượt qua các trục trặc
+ *   tạm thời như mất mạng vài giây hay tab vừa được đánh thức.
  *
  * (Giữ nguyên toàn bộ các fix trước đó: polling gapi/gis, gapi.client.init
  * lỗi âm thầm, isLoggedIn set đồng bộ, logout bọc try/catch/finally, cảnh
@@ -61,6 +60,11 @@ const SCOPES = 'openid email profile https://www.googleapis.com/auth/drive.file 
 const TOKEN_REFRESH_MARGIN_SEC = 300; // 5 phút
 const TOKEN_REFRESH_MIN_DELAY_MS = 30000; // 30 giây
 
+// MỚI — số lần & độ trễ thử lại làm mới ngầm trước khi chịu thua và hiện banner.
+// Giúp vượt qua các trục trặc tạm thời (mất mạng vài giây, tab vừa thức dậy...)
+// mà không làm phiền người dùng ngay từ lần thất bại đầu tiên.
+const SILENT_RETRY_DELAYS_MS = [4000, 15000]; // thử lại sau 4s, rồi 15s
+
 // "Dấu vết phiên đăng nhập" — dùng chung key với app.js (xem app.js). Sống độc
 // lập với access token, chỉ bị xoá khi người dùng chủ động Đăng xuất. Có cờ
 // này thì mỗi lần mở lại trang sẽ luôn thử khôi phục ngầm (silent SSO), bất kể
@@ -80,6 +84,13 @@ let silentRestoreAttempted = false;
 // vết phiên) hay đến từ việc người dùng chủ động bấm nút đăng nhập (nên cần
 // hiển thị thông báo lỗi chi tiết như trước).
 let pendingSilentRestore = false;
+// MỚI — đã từng hiện được giao diện chính (app-shell) trong phiên tải trang
+// này hay chưa. Đây là ranh giới quyết định: mất phiên TRƯỚC khi mốc này lên
+// true -> hiện màn hình đăng nhập (chưa có gì để xem). Mất phiên SAU khi mốc
+// này lên true -> chỉ hiện banner nhỏ, giữ nguyên giao diện đang dùng.
+let hasEverShownApp = false;
+// Đếm số lần đã thử làm mới ngầm liên tiếp cho 1 chu kỳ hết hạn hiện tại.
+let silentRetryCount = 0;
 const GSYNC_START_TIME = Date.now();
 
 function setLoginStatus(text, isError) {
@@ -106,6 +117,72 @@ function clearSessionMarker() {
 function hasSessionMarker() {
     try { return localStorage.getItem(SESSION_MARKER_KEY) === '1'; } catch (e) { return false; }
 }
+
+// ============================================================
+// MỚI: BANNER "CẦN KẾT NỐI LẠI" — thay thế việc ép về màn hình login khi
+// phiên hết hạn giữa lúc đang dùng app. Tạo động bằng JS nên không cần sửa
+// index.html. Không chặn thao tác, người dùng vẫn xem/sửa dữ liệu cục bộ
+// bình thường; chỉ các lệnh ghi lên Drive/Calendar/Tasks sẽ thất bại (được
+// log ra console, không văng lỗi to) cho tới khi bấm "Kết nối lại".
+// ============================================================
+function ensureReauthBannerEl() {
+    let el = document.getElementById('gportal-reauth-banner');
+    if (el) return el;
+
+    el = document.createElement('div');
+    el.id = 'gportal-reauth-banner';
+    el.style.cssText = [
+        'position:fixed', 'top:0', 'left:0', 'right:0', 'z-index:2000',
+        'display:none', 'align-items:center', 'justify-content:center', 'gap:14px',
+        'flex-wrap:wrap', 'padding:10px 18px',
+        'background:linear-gradient(90deg, #b45309, #92400e)',
+        'color:#fff', 'font-size:13px', 'font-weight:600',
+        'box-shadow:0 4px 16px rgba(0,0,0,0.25)'
+    ].join(';');
+
+    const text = document.createElement('span');
+    text.id = 'gportal-reauth-banner-text';
+    text.style.cssText = 'display:flex;align-items:center;gap:8px;';
+    text.innerHTML = `<i class='bx bx-error-circle' style="font-size:16px;"></i> <span>Phiên đăng nhập Google cần xác thực lại để tiếp tục đồng bộ.</span>`;
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.innerText = 'Kết nối lại';
+    btn.style.cssText = 'background:#fff;color:#92400e;border:none;border-radius:8px;padding:6px 14px;font-weight:700;font-size:12.5px;cursor:pointer;';
+    btn.onclick = () => window.reconnectGoogle();
+
+    el.appendChild(text);
+    el.appendChild(btn);
+    document.body.appendChild(el);
+    return el;
+}
+
+function showReauthBanner(message) {
+    const el = ensureReauthBannerEl();
+    const textSpan = document.getElementById('gportal-reauth-banner-text');
+    if (textSpan && message) {
+        textSpan.innerHTML = `<i class='bx bx-error-circle' style="font-size:16px;"></i> <span>${message}</span>`;
+    }
+    el.style.display = 'flex';
+}
+
+function hideReauthBanner() {
+    const el = document.getElementById('gportal-reauth-banner');
+    if (el) el.style.display = 'none';
+}
+
+// Nút "Kết nối lại" trên banner gọi hàm này — đây LÀ thao tác chủ động của
+// người dùng (click chuột) nên trình duyệt luôn cho phép mở cửa sổ xác thực
+// nếu cần, không bị chính sách chặn popup nền can thiệp.
+window.reconnectGoogle = function () {
+    if (!tokenClient) {
+        alert('Hệ thống Google chưa sẵn sàng, vui lòng tải lại trang.');
+        return;
+    }
+    pendingSilentRestore = false; // đây là thao tác THỦ CÔNG
+    silentRetryCount = 0;
+    tokenClient.requestAccessToken({ prompt: '' });
+};
 
 // ============================================================
 // 0. POLLING: chờ 2 thư viện gapi + Google Identity Services sẵn sàng
@@ -233,6 +310,7 @@ function scheduleTokenRefresh(expiresInSeconds) {
     tokenRefreshTimerId = setTimeout(() => {
         if (!tokenClient) return;
         console.log('[G-Portal Auth] Đang tự động làm mới phiên đăng nhập Google (ngầm)...');
+        silentRetryCount = 0;
         pendingSilentRestore = true;
         tokenClient.requestAccessToken({ prompt: '' });
     }, delayMs);
@@ -258,6 +336,7 @@ document.addEventListener('visibilitychange', () => {
     const isExpiredOrNear = Date.now() >= (expiry - TOKEN_REFRESH_MARGIN_SEC * 1000);
     if (isExpiredOrNear) {
         console.log('[G-Portal Auth] Quay lại tab, token sắp/đã hết hạn -> làm mới ngầm...');
+        silentRetryCount = 0;
         pendingSilentRestore = true;
         tokenClient.requestAccessToken({ prompt: '' });
     }
@@ -282,18 +361,18 @@ function initGoogleAuth() {
                 // đánh dấu lại "dấu vết phiên" để lần mở trang sau còn biết mà
                 // thử khôi phục ngầm tiếp.
                 markSessionActive();
+                silentRetryCount = 0;
+                hideReauthBanner();
 
                 AppState.isLoggedIn = true;
                 if (typeof window.showApp === 'function') window.showApp();
+                hasEverShownApp = true;
 
                 scheduleTokenRefresh(expiresIn);
                 fetchUserProfile(tokenResponse.access_token);
                 loadAllDataFromDrive();
             } else if (wasSilentAttempt) {
-                // Khôi phục ngầm không trả về token nhưng cũng không có lỗi rõ
-                // ràng (hiếm gặp) -> coi như phiên không còn hợp lệ, quay về màn
-                // hình đăng nhập bình thường, không cần thông báo lỗi to tát.
-                silentSessionRestoreFailed('');
+                handleSilentRefreshFailure('');
             } else {
                 setLoginStatus('Đăng nhập thất bại hoặc bị huỷ. Vui lòng thử lại.', true);
             }
@@ -307,12 +386,9 @@ function initGoogleAuth() {
 
             if (wasSilentAttempt) {
                 // Thất bại trong lúc thử KHÔI PHỤC NGẦM (không phải người dùng chủ
-                // động bấm nút) -> nghĩa là phiên SSO của Google trên trình duyệt
-                // này không còn dùng được nữa (đã đăng xuất Google, thu hồi quyền,
-                // hoặc trình duyệt chặn cookie bên thứ 3...). Âm thầm quay về màn
-                // hình đăng nhập bình thường, xoá dấu vết phiên để không lặp lại
-                // việc thử khôi phục vô ích ở những lần mở trang sau.
-                silentSessionRestoreFailed(
+                // động bấm nút). Không vội kết luận phiên đã chết — xem hàm bên dưới,
+                // sẽ tự thử lại vài lần trước khi báo thật sự cần đăng nhập lại.
+                handleSilentRefreshFailure(
                     type === 'popup_failed_to_open' || type === 'popup_closed'
                         ? ''
                         : 'Phiên đăng nhập trước đó đã hết hiệu lực, vui lòng đăng nhập lại.'
@@ -344,6 +420,7 @@ function initGoogleAuth() {
                 markSessionActive();
                 AppState.isLoggedIn = true;
                 if (typeof window.showApp === 'function') window.showApp();
+                hasEverShownApp = true;
 
                 const remainingSec = Math.floor((savedExpiry - Date.now()) / 1000);
                 scheduleTokenRefresh(remainingSec);
@@ -376,6 +453,8 @@ function initGoogleAuth() {
  * trang (silentRestoreAttempted) để tránh lặp vô hạn nếu Google liên tục từ
  * chối. Nếu không có dấu vết phiên nào -> hiển thị màn hình đăng nhập bình
  * thường, không làm gì thêm (đúng như một người dùng chưa từng đăng nhập).
+ * Đây LUÔN là trường hợp "lần đầu mở trang" (app-shell chưa hiện) nên thất
+ * bại ở bước này vẫn hợp lý khi hiện màn hình đăng nhập toàn màn hình.
  */
 function attemptSilentSessionRestore() {
     if (!hasSessionMarker()) {
@@ -389,15 +468,57 @@ function attemptSilentSessionRestore() {
 
     if (!silentRestoreAttempted) {
         silentRestoreAttempted = true;
+        silentRetryCount = 0;
         pendingSilentRestore = true;
         tokenClient.requestAccessToken({ prompt: '' });
     }
 }
 
 /**
+ * MỚI — điểm xử lý DUY NHẤT cho mọi lần làm mới ngầm thất bại, dù là lúc mở
+ * trang lần đầu, lúc hẹn giờ làm mới định kỳ, hay lúc quay lại tab. Thay vì
+ * kết luận ngay "phiên đã chết", hệ thống tự thử lại thêm vài lần (có độ trễ
+ * tăng dần) để vượt qua các trục trặc tạm thời trước khi thật sự báo cần
+ * đăng nhập lại.
+ */
+function handleSilentRefreshFailure(message) {
+    if (silentRetryCount < SILENT_RETRY_DELAYS_MS.length) {
+        const delay = SILENT_RETRY_DELAYS_MS[silentRetryCount];
+        silentRetryCount++;
+        console.log(`[G-Portal Auth] Làm mới ngầm thất bại, thử lại lần ${silentRetryCount} sau ${delay}ms...`);
+        setTimeout(() => {
+            if (!tokenClient) return;
+            pendingSilentRestore = true;
+            tokenClient.requestAccessToken({ prompt: '' });
+        }, delay);
+        return;
+    }
+
+    // Đã thử hết số lần cho phép mà vẫn thất bại -> thật sự cần đăng nhập lại.
+    silentRetryCount = 0;
+
+    if (hasEverShownApp) {
+        // ĐANG DÙNG APP GIỮA CHỪNG: không xóa dữ liệu cục bộ, không ép về màn
+        // hình đăng nhập toàn màn hình (đó là nguyên nhân gây cảm giác "popup
+        // hiện lại liên tục"). Chỉ báo bằng banner nhỏ, người dùng bấm "Kết
+        // nối lại" khi rảnh; các thao tác xem/sửa dữ liệu cục bộ vẫn dùng
+        // được bình thường trong lúc chờ.
+        console.warn('[G-Portal Auth] Mất phiên Google giữa lúc đang dùng app -> hiện banner, KHÔNG đăng xuất.');
+        showReauthBanner('Phiên đăng nhập Google đã hết hạn. Bấm "Kết nối lại" để tiếp tục đồng bộ Drive/Calendar/Tasks.');
+        return;
+    }
+
+    // LẦN ĐẦU MỞ TRANG, app-shell chưa từng hiện -> không có gì để giữ lại,
+    // hiện màn hình đăng nhập bình thường như cũ.
+    silentSessionRestoreFailed(message);
+}
+
+/**
  * Khôi phục ngầm thất bại thật sự (không phải do popup bị chặn tạm thời) ->
  * coi như phiên SSO không còn dùng được, dọn sạch dấu vết phiên + token, và
  * đưa người dùng về màn hình đăng nhập bình thường kèm thông báo phù hợp.
+ * CHỈ được gọi khi app-shell chưa từng hiển thị trong phiên tải trang này
+ * (xem handleSilentRefreshFailure ở trên).
  */
 function silentSessionRestoreFailed(message) {
     clearSessionMarker();
@@ -422,6 +543,7 @@ function loadAllDataFromDrive() {
 window.handleAuthClick = function () {
     if (tokenClient) {
         pendingSilentRestore = false; // đây là thao tác đăng nhập THỦ CÔNG của người dùng
+        silentRetryCount = 0;
         tokenClient.requestAccessToken({ prompt: '' });
     } else {
         let reason = 'chưa rõ nguyên nhân — hãy xem dòng chữ đỏ phía dưới nút này hoặc mở Console (F12) để xem lỗi.';
@@ -458,6 +580,9 @@ window.handleSignoutClick = function () {
         clearSessionMarker();
         silentRestoreAttempted = false;
         pendingSilentRestore = false;
+        silentRetryCount = 0;
+        hasEverShownApp = false;
+        hideReauthBanner();
         AppState.isLoggedIn = false;
         AppState.userProfile = null;
         const box = document.getElementById('user-profile-box');
@@ -467,7 +592,7 @@ window.handleSignoutClick = function () {
 };
 
 // ========================================================
-// PHẦN LOGIC ĐỒNG BỘ LỊCH VÀ TASKS
+// PHẦN LOGIC ĐỒNG BỘ LỊCH VÀ TASKS (không đổi so với bản trước)
 // ========================================================
 
 const DEFAULT_WORK_CALENDAR_ID = 'primary';
@@ -527,6 +652,7 @@ async function findEventsByExtendedPropsInRange(timeMin, timeMax, calendarId, pr
         } while (pageToken);
     } catch (err) {
         console.error('Lỗi khi tìm sự kiện Lịch (theo khoảng thời gian):', err);
+        maybeFlagAuthErrorFromApiCall(err);
     }
     return items;
 }
@@ -548,6 +674,7 @@ async function deleteCalendarEventsByProps(dateStr, calendarId, propFilters) {
         }
     } catch (err) {
         console.error("Lỗi khi xóa sự kiện Lịch:", err);
+        maybeFlagAuthErrorFromApiCall(err);
     }
 }
 
@@ -566,6 +693,23 @@ function buildShiftEventTitle(dayData) {
     return `${shiftPart} - ${typeLabel}`;
 }
 window.buildShiftEventTitle = buildShiftEventTitle;
+
+// MỚI — kiểm tra lỗi API có phải do access token hết hạn/không hợp lệ
+// (401/403 auth) hay không. Nếu đúng, chủ động kích hoạt luồng làm mới ngầm
+// thay vì để người dùng chỉ thấy console.error mà không hiểu vì sao dữ liệu
+// không lên Google. Không đăng xuất, không hiện popup — chỉ kích hoạt lại
+// đúng quy trình handleSilentRefreshFailure ở trên (tự thử ngầm rồi mới hiện
+// banner nếu cần).
+function maybeFlagAuthErrorFromApiCall(err) {
+    const status = err && (err.status || (err.result && err.result.error && err.result.error.code));
+    if (status === 401 || status === 403) {
+        if (!tokenClient) return;
+        console.warn('[G-Portal Auth] Lệnh gọi API Google thất bại do quyền truy cập (', status, ') -> thử làm mới phiên ngầm...');
+        silentRetryCount = 0;
+        pendingSilentRestore = true;
+        tokenClient.requestAccessToken({ prompt: '' });
+    }
+}
 
 // FIX #2 — CA ĐÊM: nếu giờ kết thúc <= giờ bắt đầu (VD 21:30 -> 07:30) thì ca
 // làm việc kết thúc vào NGÀY HÔM SAU. Trước đây cả start lẫn end đều gán
@@ -609,6 +753,7 @@ window.syncCalendarEvent = async function (dateStr, dayData, shiftTime, descript
         console.log(`Đã đồng bộ Lịch ngày ${dateStr} thành công.`);
     } catch (err) {
         console.error("Lỗi đồng bộ Lịch: ", err);
+        maybeFlagAuthErrorFromApiCall(err);
     }
 };
 
@@ -662,6 +807,7 @@ window.syncOtCalendarEvent = async function (dateStr, dayData, otShiftTime, desc
         console.log(`Đã đồng bộ sự kiện Tăng cường (OT) ngày ${dateStr} thành công.`);
     } catch (err) {
         console.error("Lỗi đồng bộ sự kiện OT: ", err);
+        maybeFlagAuthErrorFromApiCall(err);
     }
 };
 
@@ -710,6 +856,7 @@ window.syncMeetingCalendarEvent = async function (meeting) {
         console.log(`Đã đồng bộ lịch họp ${meeting.id}.`);
     } catch (err) {
         console.error('Lỗi đồng bộ lịch họp:', err);
+        maybeFlagAuthErrorFromApiCall(err);
     }
 };
 
@@ -717,19 +864,24 @@ window.syncMeetingCalendarEvent = async function (meeting) {
 async function findGoogleTasksInRange(dueMin, dueMax) {
     let items = [];
     let pageToken;
-    do {
-        const listRes = await gapi.client.tasks.tasks.list({
-            tasklist: '@default',
-            showCompleted: false,
-            showHidden: false,
-            dueMin: dueMin,
-            dueMax: dueMax,
-            maxResults: 100,
-            pageToken: pageToken
-        });
-        items = items.concat(listRes.result.items || []);
-        pageToken = listRes.result.nextPageToken;
-    } while (pageToken);
+    try {
+        do {
+            const listRes = await gapi.client.tasks.tasks.list({
+                tasklist: '@default',
+                showCompleted: false,
+                showHidden: false,
+                dueMin: dueMin,
+                dueMax: dueMax,
+                maxResults: 100,
+                pageToken: pageToken
+            });
+            items = items.concat(listRes.result.items || []);
+            pageToken = listRes.result.nextPageToken;
+        } while (pageToken);
+    } catch (err) {
+        console.error('Lỗi khi tìm Google Tasks:', err);
+        maybeFlagAuthErrorFromApiCall(err);
+    }
     return items;
 }
 
@@ -762,6 +914,7 @@ window.syncGoogleTask = async function (dateKey, taskName, notes) {
         console.log(`Đã đồng bộ Task PCCV ngày ${dateKey}.`);
     } catch (err) {
         console.error('Lỗi đồng bộ Google Task:', err);
+        maybeFlagAuthErrorFromApiCall(err);
     }
 };
 
@@ -775,6 +928,7 @@ window.deleteGoogleTask = async function (dateKey) {
         }
     } catch (err) {
         console.error('Lỗi xoá Google Task:', err);
+        maybeFlagAuthErrorFromApiCall(err);
     }
 };
 
