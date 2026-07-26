@@ -1,33 +1,45 @@
 /**
  * schedule.js - Module Lịch làm việc
  *
- * BẢN VÁ LỖI QUAN TRỌNG NHẤT (mới nhất): "Đổi ca/Trực hộ không hiện dropdown
- * chọn nhân sự, nút Lưu/Xóa trong popup hiệu chỉnh ngày không phản hồi gì"
+ * BẢN VÁ LỖI MỚI NHẤT (2 lỗi được báo cáo):
  * -------------------------------------------------------------------------
- * NGUYÊN NHÂN THẬT SỰ: initScheduleEvents() gắn TẤT CẢ sự kiện (đổi tháng,
- * upload Excel, đóng modal, đổi loại ca, nút Lưu, nút Xóa, đồng bộ Google,
- * modal họp...) tuần tự trong CÙNG MỘT HÀM bằng
- * `document.getElementById(id).addEventListener(...)` KHÔNG kiểm tra null.
- * Nếu bất kỳ 1 phần tử nào trong danh sách đó bị thiếu ID trên HTML (báo lỗi
- * "Cannot read properties of null (reading 'addEventListener')"), toàn bộ
- * các dòng addEventListener PHÍA SAU dòng lỗi đó trong hàm sẽ KHÔNG BAO GIỜ
- * được thực thi — kể cả khi nằm trong try/catch bên ngoài (try/catch chỉ
- * chặn crash lan ra ngoài, không "chạy tiếp" các dòng sau lỗi trong cùng
- * 1 lệnh gọi hàm).
+ * LỖI 1 — "Import Excel chỉ điền Ngày + Mã Ca báo thành công nhưng không
+ * thấy dữ liệu": Nguyên nhân thật sự là do saveScheduleToDrive() luôn lưu
+ * TOÀN BỘ window.monthlyScheduleData vào file của THÁNG ĐANG XEM
+ * (currentDate), bất kể ngày tháng thật sự trong file Excel là tháng nào.
+ * Nếu file Excel chứa lịch của một tháng KHÁC tháng đang xem trên Portal,
+ * dữ liệu bị ghi nhầm vào file tháng đang xem thay vì tháng thật -> khi
+ * chuyển sang đúng tháng đó sẽ không thấy gì.
  *
- * Hậu quả trực tiếp: sự kiện "change" của #modal-shift-type (dùng để hiện/ẩn
- * dropdown Đổi ca/Trực hộ) và sự kiện "click" của #btn-save-day / các nút
- * khác nằm SAU phần tử bị lỗi trong hàm không hề được gắn -> chọn "Đổi ca"
- * không thấy dropdown hiện, bấm Lưu/Xóa im lặng không phản hồi.
+ * FIX: handleExcelUpload() giờ GOM dữ liệu theo từng tháng (khoá "YYYY-MM")
+ * dựa trên cột "Ngày" của từng dòng. Dòng nào thuộc THÁNG ĐANG XEM thì cập
+ * nhật thẳng vào bộ nhớ + lưu theo luồng cũ. Dòng nào thuộc THÁNG KHÁC thì
+ * tự tải file lịch đúng tháng đó trên Drive, gộp (merge) với dữ liệu vừa
+ * import rồi lưu lại đúng file — không cần người dùng phải chuyển tháng.
  *
- * FIX: chuyển TOÀN BỘ lệnh gắn sự kiện trong initScheduleEvents() sang dùng
- * bindIfPresent() (đã có kiểm tra tồn tại phần tử). Nếu thiếu 1 phần tử nào
- * đó, chỉ riêng sự kiện của phần tử đó không được gắn (kèm console.warn ghi
- * rõ ID thiếu để dễ dò), các sự kiện còn lại trong hàm vẫn hoạt động bình
- * thường — không còn hiện tượng "một lỗi làm treo toàn bộ modal" nữa.
+ * Đồng thời làm rõ yêu cầu "chỉ cần Ngày + Mã Ca, các cột khác bỏ trống thì
+ * mặc định Chính chủ": nếu thiếu cột "Phân loại" -> mặc định 'chinhchu'
+ * (đã có sẵn nhưng viết lại tường minh hơn), nếu thiếu "Mã Ca" -> mặc định
+ * 'OFF', các cột OT/PCCV/Nhân sự liên quan bỏ trống thì để rỗng, không bắt
+ * buộc.
+ *
+ * LỖI 2 — "2 mũi tên chọn tháng không chuyển được": nút "Tháng sau" trong
+ * index.html trước đây bị khai báo TRÙNG 2 thuộc tính id trên cùng 1 thẻ
+ * (id="btn-dash-next-month" id="btn-next-month"). Theo chuẩn HTML, khi 1
+ * thẻ có nhiều thuộc tính id trùng tên, trình duyệt chỉ nhận thuộc tính ĐẦU
+ * TIÊN, thuộc tính sau bị bỏ qua hoàn toàn -> phần tử thực tế mang id
+ * "btn-dash-next-month", không hề có id "btn-next-month" nào tồn tại trên
+ * trang. Trong khi initScheduleEvents() bên dưới lại gắn sự kiện vào
+ * "btn-next-month" -> bindIfPresent() không tìm thấy phần tử -> nút "Tháng
+ * sau" không hề có sự kiện click nào được gắn, bấm vào không phản hồi gì.
+ * FIX: đã xoá id trùng lặp trong index.html (xem file index.html đính kèm).
+ * Sau khi id đúng lại, currentDate.setMonth(+1/-1) hoạt động không giới hạn
+ * (không có ràng buộc chặn số tháng trong code), nên đã đáp ứng luôn yêu
+ * cầu "chọn được tháng trước/sau, không giới hạn".
  * -------------------------------------------------------------------------
- * (Giữ nguyên toàn bộ tính năng gốc + bản vá trước đó về Settings/staffs
- * fallback mặc định, try/catch quanh openDayModal/saveDayEdit/deleteDayEdit)
+ * (Giữ nguyên toàn bộ các bản vá trước đó: Settings/staffs fallback mặc
+ * định, try/catch quanh openDayModal/saveDayEdit/deleteDayEdit,
+ * bindIfPresent() chống 1 phần tử thiếu làm treo cả loạt sự kiện phía sau).
  */
 
 window.monthlyScheduleData = window.monthlyScheduleData || {};
@@ -66,7 +78,7 @@ function bindIfPresent(id, eventName, handler, targetOverride) {
         el.addEventListener(eventName, handler);
         return true;
     }
-    console.warn(`[schedule.js] Không tìm thấy phần tử #${id} trên trang — sự kiện "${eventName}" KHÔNG được gắn. Kiểm tra lại HTML (id có thể đã bị đổi/xóa nhầm).`);
+    console.warn(`[schedule.js] Không tìm thấy phần tử #${id} trên trang — sự kiện "${eventName}" KHÔNG được gắn. Kiểm tra lại HTML (id có thể đã bị đổi/xóa nhầm, hoặc bị trùng thuộc tính id với phần tử khác).`);
     return false;
 }
 
@@ -78,6 +90,7 @@ function initScheduleEvents() {
         const ws_data = [["Ngày", "Mã Ca", "OT", "Mã PCCV", "Phân loại", "Nhân sự liên quan"]];
         ws_data.push(["01/07/2026", "S1", "S+", "CHAT", "Chính chủ", ""]);
         ws_data.push(["02/07/2026", "S2", "", "", "Đổi ca", "NV01"]);
+        ws_data.push(["03/07/2026", "S1", "", "", "", ""]); // Ví dụ: chỉ cần Ngày + Mã Ca -> tự mặc định Chính chủ
 
         const ws = XLSX.utils.aoa_to_sheet(ws_data);
         const wb = XLSX.utils.book_new();
@@ -135,10 +148,21 @@ function getScheduleFileName() {
     return `schedule_${year}_${month}.json`;
 }
 
+// Tên file lịch cho một tháng BẤT KỲ (không nhất thiết là tháng đang xem),
+// dùng khi Excel import chứa dữ liệu của tháng khác tháng hiện tại.
+function getScheduleFileNameForYm(ymKey) {
+    const [y, m] = ymKey.split('-');
+    return `schedule_${y}_${m}.json`;
+}
+
 function getMeetingsFileName() {
     const year = currentDate.getFullYear();
     const month = (currentDate.getMonth() + 1).toString().padStart(2, '0');
     return `meetings_${year}_${month}.json`;
+}
+
+function getCurrentYmKey() {
+    return `${currentDate.getFullYear()}-${(currentDate.getMonth() + 1).toString().padStart(2, '0')}`;
 }
 
 async function saveScheduleToDrive() {
@@ -355,52 +379,122 @@ function deleteDayEdit() {
     }
 }
 
+/**
+ * Đọc 1 dòng dữ liệu từ Excel và trả về { dateKey, dayData } hoặc null nếu
+ * dòng không hợp lệ (không đọc được ngày). CHỈ BẮT BUỘC "Ngày" + "Mã Ca":
+ * - Thiếu "Mã Ca" -> mặc định 'OFF'.
+ * - Thiếu "Phân loại" (hoặc không khớp "đổi ca"/"trực hộ") -> mặc định
+ *   'chinhchu' (Chính chủ).
+ * - Thiếu OT / Mã PCCV / Nhân sự liên quan -> để trống, không bắt buộc.
+ */
+function parseScheduleRow(row) {
+    const rawDate = row['Ngày'] || row['Date'];
+    const dateKey = parseDateToKey(rawDate);
+    if (!dateKey) return null;
+
+    const shift = (row['Mã Ca'] || row['Shift'] || 'OFF').toString().trim() || 'OFF';
+    const ot = (row['OT'] || '').toString().trim();
+    const task = (row['Mã PCCV'] || row['Task'] || '').toString().trim();
+    const typeRaw = (row['Phân loại'] || row['Type'] || 'Chính chủ').toString().trim().toLowerCase();
+    const staff = (row['Nhân sự liên quan'] || row['Staff'] || '').toString().trim();
+
+    let type = 'chinhchu';
+    if (typeRaw.includes('đổi') || typeRaw.includes('doi')) type = 'doica';
+    else if (typeRaw.includes('trực') || typeRaw.includes('truc')) type = 'trucho';
+
+    return {
+        dateKey,
+        dayData: {
+            type,
+            shift,
+            ot,
+            task,
+            trade: type === 'doica' ? staff : '',
+            help: type === 'trucho' ? staff : ''
+        }
+    };
+}
+
 function handleExcelUpload(event) {
     const file = event.target.files[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = function (e) {
+    reader.onload = async function (e) {
+        const uploadInput = document.getElementById('excel-upload');
         try {
             const data = new Uint8Array(e.target.result);
             const wb = XLSX.read(data, { type: 'array' });
             const rawJson = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
 
+            // Gom từng dòng hợp lệ theo THÁNG (khoá "YYYY-MM") lấy từ chính cột
+            // "Ngày" của dòng đó — quan trọng để không lưu nhầm lịch của tháng
+            // khác vào file của tháng đang xem trên Portal.
+            const groups = {};
             let importedCount = 0;
+
             rawJson.forEach(row => {
-                const rawDate = row['Ngày'] || row['Date'];
-                const shift = (row['Mã Ca'] || row['Shift'] || 'OFF').toString().trim();
-                const ot = (row['OT'] || '').toString().trim();
-                const task = (row['Mã PCCV'] || row['Task'] || '').toString().trim();
-                const typeRaw = (row['Phân loại'] || row['Type'] || 'Chính chủ').toString().trim().toLowerCase();
-                const staff = (row['Nhân sự liên quan'] || row['Staff'] || '').toString().trim();
-
-                const dateKey = parseDateToKey(rawDate);
-                if (!dateKey) return;
-
-                let type = 'chinhchu';
-                if (typeRaw.includes('đổi') || typeRaw.includes('doi')) type = 'doica';
-                else if (typeRaw.includes('trực') || typeRaw.includes('truc')) type = 'trucho';
-
-                window.monthlyScheduleData[dateKey] = {
-                    type,
-                    shift: shift || 'OFF',
-                    ot,
-                    task,
-                    trade: type === 'doica' ? staff : '',
-                    help: type === 'trucho' ? staff : ''
-                };
+                const parsed = parseScheduleRow(row);
+                if (!parsed) return;
+                const ymKey = parsed.dateKey.substring(0, 7);
+                if (!groups[ymKey]) groups[ymKey] = {};
+                groups[ymKey][parsed.dateKey] = parsed.dayData;
                 importedCount++;
             });
 
-            alert(`Import Lịch thành công! (${importedCount} ngày)`);
+            if (importedCount === 0) {
+                alert('Không đọc được dòng dữ liệu hợp lệ nào trong file. Vui lòng kiểm tra lại cột "Ngày" (định dạng dd/mm/yyyy) và thử lại.');
+                return;
+            }
+
+            const currentYmKey = getCurrentYmKey();
+            const otherYmKeys = Object.keys(groups).filter(k => k !== currentYmKey);
+            let otherMonthsSavedCount = 0;
+            let otherMonthsSkippedCount = 0;
+
+            // Tháng đang xem trên Portal: cập nhật ngay vào bộ nhớ + lưu theo
+            // luồng hiện có (saveScheduleToDrive dùng đúng tên file tháng này).
+            if (groups[currentYmKey]) {
+                Object.assign(window.monthlyScheduleData, groups[currentYmKey]);
+            }
+
+            // Các tháng KHÁC tháng đang xem: tự tải đúng file của tháng đó trên
+            // Drive, gộp (merge) với dữ liệu vừa import rồi lưu lại — không cần
+            // người dùng phải chuyển tháng thủ công thì mới lưu được.
+            if (otherYmKeys.length > 0) {
+                if (typeof AppState !== 'undefined' && AppState.isLoggedIn && window.GPORTAL_FOLDERS) {
+                    for (const ymKey of otherYmKeys) {
+                        try {
+                            const fileName = getScheduleFileNameForYm(ymKey);
+                            const existing = (await getJsonFromDrive(fileName, window.GPORTAL_FOLDERS.shifts)) || {};
+                            const merged = Object.assign({}, existing, groups[ymKey]);
+                            await saveJsonToDrive(fileName, merged, window.GPORTAL_FOLDERS.shifts);
+                            otherMonthsSavedCount += Object.keys(groups[ymKey]).length;
+                        } catch (err) {
+                            console.error(`Lỗi lưu lịch tháng ${ymKey}:`, err);
+                            otherMonthsSkippedCount += Object.keys(groups[ymKey]).length;
+                        }
+                    }
+                } else {
+                    otherYmKeys.forEach(ymKey => { otherMonthsSkippedCount += Object.keys(groups[ymKey]).length; });
+                }
+            }
+
             renderCalendar();
             saveScheduleToDrive();
+
+            let msg = `Import Lịch thành công! (${importedCount} ngày)`;
+            if (otherMonthsSavedCount > 0) {
+                msg += `\nĐã lưu thêm ${otherMonthsSavedCount} ngày thuộc ${otherYmKeys.length} tháng khác (${otherYmKeys.join(', ')}) trực tiếp lên Google Drive — hãy chuyển sang tháng đó để xem.`;
+            }
+            if (otherMonthsSkippedCount > 0) {
+                msg += `\nLưu ý: ${otherMonthsSkippedCount} ngày thuộc tháng khác CHƯA lưu được lên Google Drive (do chưa đăng nhập Google hoặc có lỗi mạng). Vui lòng đăng nhập/kiểm tra mạng rồi import lại các tháng đó.`;
+            }
+            alert(msg);
         } catch (err) {
             console.error('Lỗi đọc file Excel:', err);
             alert("Không đọc được file Excel. Vui lòng dùng đúng định dạng file mẫu (.xlsx/.xls).");
         } finally {
-            const uploadInput = document.getElementById('excel-upload');
             if (uploadInput) uploadInput.value = '';
         }
     };
