@@ -1,7 +1,29 @@
 /**
  * googleSync.js - Google Auth + Drive + Calendar + Tasks
  *
- * BẢN CẬP NHẬT MỚI NHẤT — TÁCH RIÊNG LỊCH TĂNG CƯỜNG (OT):
+ * BẢN VÁ MỚI NHẤT — LỖI "PCCV KHÔNG LÊN ĐƯỢC GOOGLE TASKS":
+ * -------------------------------------------------------------------------
+ * TRIỆU CHỨNG: Bấm "Đồng bộ Google" (hoặc lưu hiệu chỉnh 1 ngày), sự kiện
+ * Ca làm/Tăng cường lên Google Calendar bình thường, nhưng PCCV không xuất
+ * hiện trên Google Tasks — và không có bất kỳ cảnh báo nào trên giao diện.
+ *
+ * NGUYÊN NHÂN: syncGoogleTask() và deleteGoogleTask() trước đây tự bắt lỗi
+ * bên trong bằng try/catch rồi chỉ console.error() — nuốt lỗi hoàn toàn,
+ * không throw ra ngoài. Nếu request tới Google Tasks API thất bại (403 do
+ * "Google Tasks API" chưa được BẬT (Enable) trong Google Cloud Console cho
+ * đúng project đang dùng CLIENT_ID/API_KEY này, hoặc access token hiện tại
+ * thiếu scope "tasks" — ví dụ do người dùng đăng nhập TRƯỚC KHI scope này
+ * được thêm vào code, token cũ trong localStorage vẫn còn hạn nên không bị
+ * buộc đăng nhập lại — hoặc do tạm thời mất mạng), hàm coi như "chạy xong"
+ * một cách im lặng: Task không được tạo/cập nhật nhưng không ai biết.
+ *
+ * FIX: syncGoogleTask() và deleteGoogleTask() giờ NÉM LẠI (re-throw) lỗi
+ * sau khi log, để nơi gọi (schedule.js: syncScheduleDayToGoogle/saveDayEdit)
+ * bắt được và HIỂN THỊ RÕ cho người dùng biết chính xác ngày nào, lỗi gì —
+ * thay vì báo "Đồng bộ thành công" chung chung dù Task thực ra chưa lên.
+ * -------------------------------------------------------------------------
+ *
+ * BẢN CẬP NHẬT TRƯỚC ĐÓ — TÁCH RIÊNG LỊCH TĂNG CƯỜNG (OT):
  * -------------------------------------------------------------------------
  * Trước đây sự kiện Tăng cường (OT) được đẩy chung vào CÙNG một lịch với
  * Ca làm việc chính (workCalendarId), chỉ phân biệt bằng
@@ -184,6 +206,13 @@ async function initializeGapiClient() {
             discoveryDocs: DISCOVERY_DOCS,
         });
         gapiInited = true;
+        // Cảnh báo sớm ngay từ lúc khởi tạo nếu discovery doc của Tasks API
+        // không nạp được namespace gapi.client.tasks — giúp phát hiện lỗi
+        // "PCCV không lên Google Tasks" ngay từ gốc (thay vì chỉ biết khi
+        // bấm Đồng bộ Google) và ghi rõ log để dễ dò khi báo lỗi.
+        if (!gapi.client.tasks) {
+            console.error('[G-Portal Auth] CẢNH BÁO: gapi.client.tasks KHÔNG tồn tại sau khi init discovery docs. Google Tasks (PCCV) sẽ không thể đồng bộ được. Nguyên nhân thường gặp: "Google Tasks API" chưa được BẬT (Enable) trong Google Cloud Console cho project ứng với CLIENT_ID/API_KEY đang dùng — vào https://console.cloud.google.com/apis/library/tasks.googleapis.com để bật.');
+        }
         checkAllReady();
     } catch (e) {
         console.error("Lỗi khởi tạo GAPI:", e);
@@ -771,8 +800,31 @@ async function findGoogleTaskByDate(dateKey) {
     return items.find(t => t.due && t.due.substring(0, 10) === dateKey);
 }
 
+/**
+ * Đồng bộ (bổ sung hoặc cập nhật) 1 Google Task cho ngày dateKey.
+ *
+ * SỬA LỖI "PCCV KHÔNG LÊN GOOGLE TASKS": trước đây hàm này tự bắt lỗi bên
+ * trong (try/catch) rồi chỉ console.error(), không cho nơi gọi biết là đã
+ * thất bại -> nơi gọi (schedule.js) tưởng đã xong. Nay:
+ *  1) Kiểm tra rõ ràng gapi.client.tasks có tồn tại không trước khi gọi API
+ *     — nếu không, log cảnh báo cụ thể (thường do Google Tasks API chưa
+ *     được bật trong Google Cloud Console) rồi NÉM LỖI ra ngoài.
+ *  2) Nếu gọi API thất bại (403/404/500...), NÉM LẠI lỗi đó (kèm nguyên vẹn
+ *     err.result.error từ Google để nơi gọi hiển thị đúng mã lỗi + thông
+ *     điệp) thay vì nuốt âm thầm.
+ * Nơi gọi (syncScheduleDayToGoogle trong schedule.js) sẽ bắt lỗi này riêng,
+ * không để nó làm hỏng phần đồng bộ Lịch đã thành công, đồng thời hiển thị
+ * rõ cho người dùng biết ngày nào bị lỗi và lỗi gì.
+ */
 window.syncGoogleTask = async function (dateKey, taskName, notes) {
-    if (!AppState.isLoggedIn || !gapi.client.tasks) return;
+    if (!AppState.isLoggedIn) return;
+
+    if (!gapi.client.tasks) {
+        const msg = `gapi.client.tasks chưa sẵn sàng (Google Tasks API có thể chưa được Enable trong Google Cloud Console, hoặc token thiếu quyền "tasks")`;
+        console.error(`[G-Portal] Không thể đồng bộ Task PCCV ngày ${dateKey}: ${msg}`);
+        throw new Error(msg);
+    }
+
     try {
         const dueISO = `${dateKey}T00:00:00.000Z`;
         const existing = await findGoogleTaskByDate(dateKey);
@@ -792,12 +844,15 @@ window.syncGoogleTask = async function (dateKey, taskName, notes) {
         }
         console.log(`Đã đồng bộ Task PCCV ngày ${dateKey}.`);
     } catch (err) {
-        console.error('Lỗi đồng bộ Google Task:', err);
+        console.error(`[G-Portal] Lỗi đồng bộ Google Task ngày ${dateKey}:`, err && err.result ? err.result.error : err);
+        throw err;
     }
 };
 
 window.deleteGoogleTask = async function (dateKey) {
-    if (!AppState.isLoggedIn || !gapi.client.tasks) return;
+    if (!AppState.isLoggedIn) return;
+    if (!gapi.client.tasks) return; // không có gì để xoá nếu Tasks API chưa sẵn sàng
+
     try {
         const existing = await findGoogleTaskByDate(dateKey);
         if (existing) {
@@ -805,7 +860,8 @@ window.deleteGoogleTask = async function (dateKey) {
             console.log(`Đã xoá Task PCCV ngày ${dateKey}.`);
         }
     } catch (err) {
-        console.error('Lỗi xoá Google Task:', err);
+        console.error(`[G-Portal] Lỗi xoá Google Task ngày ${dateKey}:`, err && err.result ? err.result.error : err);
+        throw err;
     }
 };
 
@@ -915,7 +971,7 @@ window.reconcileMonthWithGoogle = async function (monthDate) {
 
     const dueMin = `${firstKey}T00:00:00.000Z`;
     const dueMax = `${lastKey}T23:59:59.999Z`;
-    const monthTasks = await findGoogleTasksInRange(dueMin, dueMax);
+    const monthTasks = gapi.client.tasks ? await findGoogleTasksInRange(dueMin, dueMax) : [];
     const googleTaskMap = {};
     monthTasks.forEach(t => {
         if (!t.due) return;
