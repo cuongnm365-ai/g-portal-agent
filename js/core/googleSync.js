@@ -1,7 +1,41 @@
 /**
  * googleSync.js - Google Auth + Drive + Calendar + Tasks
  *
- * BẢN VÁ MỚI NHẤT — LỖI "PCCV KHÔNG LÊN ĐƯỢC GOOGLE TASKS":
+ * BẢN VÁ MỚI NHẤT — LỖI "Maximum call stack size exceeded" KHI ĐỒNG BỘ TASK:
+ * -------------------------------------------------------------------------
+ * TRIỆU CHỨNG: Bấm "Đồng bộ Google", Lịch (Ca/OT) và Lịch họp lên Google
+ * Calendar bình thường, nhưng Task PCCV báo lỗi "Maximum call stack size
+ * exceeded" cho hàng loạt ngày.
+ *
+ * NGUYÊN NHÂN: ở cuối file có đoạn (đã tồn tại từ code gốc, không phải do
+ * các bản vá trước gây ra):
+ *   async function findGoogleTaskByDatePublicWrapper(dateKey) {
+ *       return findGoogleTaskByDate(dateKey);
+ *   }
+ *   window.findGoogleTaskByDate = findGoogleTaskByDatePublicWrapper;
+ * Vì đây là script thường (không phải ES module), hàm khai báo
+ * "function findGoogleTaskByDate(...)" ở top-level CHÍNH LÀ
+ * window.findGoogleTaskByDate ngay từ đầu. Dòng cuối cùng ở trên GHI ĐÈ
+ * window.findGoogleTaskByDate bằng chính cái wrapper. Việc phân giải 1 tên
+ * hàm trần (không có "window." hay "this.") trong 1 script thường được tra
+ * cứu qua thuộc tính của window TẠI THỜI ĐIỂM GỌI, không phải tại thời điểm
+ * khai báo — nên sau dòng ghi đè đó, MỌI lời gọi tên trần
+ * findGoogleTaskByDate(...) ở bất kỳ đâu trong file (kể cả bên trong chính
+ * wrapper) đều trỏ lại đúng cái wrapper đó -> wrapper tự gọi lại chính nó ->
+ * đệ quy vô hạn -> tràn stack.
+ *
+ * Lỗi này TỒN TẠI TỪ TRƯỚC nhưng "ngủ yên": trước đây syncGoogleTask()/
+ * deleteGoogleTask() luôn return sớm ở bước kiểm tra "!gapi.client.tasks"
+ * (do Tasks API chưa Enable / thiếu scope), nên code không bao giờ chạy tới
+ * đoạn gọi findGoogleTaskByDate() để kích hoạt đệ quy. Sau khi Enable Tasks
+ * API / đăng nhập lại để cấp quyền "tasks" (theo hướng dẫn ở bản vá trước),
+ * gapi.client.tasks đã sẵn sàng, code chạy sâu hơn và đâm đúng vào bug này.
+ *
+ * FIX: KHÔNG bọc thêm 1 lớp wrapper gọi lại tên trần nữa — export thẳng
+ * tham chiếu tới hàm gốc: window.findGoogleTaskByDate = findGoogleTaskByDate;
+ * -------------------------------------------------------------------------
+ *
+ * BẢN VÁ TRƯỚC ĐÓ — LỖI "PCCV KHÔNG LÊN ĐƯỢC GOOGLE TASKS" (âm thầm):
  * -------------------------------------------------------------------------
  * TRIỆU CHỨNG: Bấm "Đồng bộ Google" (hoặc lưu hiệu chỉnh 1 ngày), sự kiện
  * Ca làm/Tăng cường lên Google Calendar bình thường, nhưng PCCV không xuất
@@ -1063,7 +1097,15 @@ window.reconcileMonthWithGoogle = async function (monthDate) {
     return { changed: changedSchedule || changedMeeting, changedSchedule, changedMeeting };
 };
 
-async function findGoogleTaskByDatePublicWrapper(dateKey) {
-    return findGoogleTaskByDate(dateKey);
-}
-window.findGoogleTaskByDate = findGoogleTaskByDatePublicWrapper;
+// LƯU Ý QUAN TRỌNG: KHÔNG được gán window.findGoogleTaskByDate bằng một hàm
+// "wrapper" gọi lại tên trần findGoogleTaskByDate(...) bên trong nó. Đây là
+// script thường (không phải module) nên "function findGoogleTaskByDate(...)"
+// khai báo ở trên CHÍNH LÀ window.findGoogleTaskByDate — nếu gán đè
+// window.findGoogleTaskByDate bằng 1 wrapper gọi lại tên trần đó, từ lúc đó
+// trở đi tên trần findGoogleTaskByDate sẽ luôn trỏ về đúng cái wrapper (vì
+// việc phân giải tên trần tra cứu qua thuộc tính window tại THỜI ĐIỂM GỌI,
+// không phải tại thời điểm khai báo) -> wrapper tự gọi lại chính nó vô hạn
+// -> "Maximum call stack size exceeded". Đây chính là nguyên nhân lỗi tràn
+// stack khi đồng bộ Task PCCV. Cách sửa AN TOÀN: export thẳng tham chiếu tới
+// hàm gốc, không bọc thêm 1 lớp gọi lại tên trần.
+window.findGoogleTaskByDate = findGoogleTaskByDate;
