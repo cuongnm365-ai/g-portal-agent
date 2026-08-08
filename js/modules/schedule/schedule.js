@@ -1,69 +1,35 @@
 /**
  * schedule.js - Module Lịch làm việc
  *
- * BẢN VÁ LỖI MỚI NHẤT (2 lỗi được báo cáo):
- * -------------------------------------------------------------------------
- * LỖI 1 — "Import Excel chỉ điền Ngày + Mã Ca báo thành công nhưng không
- * thấy dữ liệu": Nguyên nhân thật sự là do saveScheduleToDrive() luôn lưu
- * TOÀN BỘ window.monthlyScheduleData vào file của THÁNG ĐANG XEM
- * (currentDate), bất kể ngày tháng thật sự trong file Excel là tháng nào.
- * Nếu file Excel chứa lịch của một tháng KHÁC tháng đang xem trên Portal,
- * dữ liệu bị ghi nhầm vào file tháng đang xem thay vì tháng thật -> khi
- * chuyển sang đúng tháng đó sẽ không thấy gì.
+ * ============================================================================
+ * BẢN VÁ MỚI NHẤT — LỖI "DOUBLE EVENT + TASK" (Event/Task bị nhân đôi)
+ * ============================================================================
+ * Nguyên nhân gốc rễ (chi tiết đầy đủ xem ghi chú đầu file js/core/googleSync.js):
+ * bước "xoá sự kiện cũ trước khi tạo mới" trong googleSync.js trước đây có
+ * thể thất bại ÂM THẦM (do bị Google giới hạn tần suất API khi đồng bộ nhiều
+ * ngày liên tiếp trong thời gian ngắn), nhưng vẫn tiếp tục tạo sự kiện mới
+ * phía sau => sự kiện/task bị NHÂN ĐÔI trên Google.
  *
- * FIX: handleExcelUpload() giờ GOM dữ liệu theo từng tháng (khoá "YYYY-MM")
- * dựa trên cột "Ngày" của từng dòng. Dòng nào thuộc THÁNG ĐANG XEM thì cập
- * nhật thẳng vào bộ nhớ + lưu theo luồng cũ. Dòng nào thuộc THÁNG KHÁC thì
- * tự tải file lịch đúng tháng đó trên Drive, gộp (merge) với dữ liệu vừa
- * import rồi lưu lại đúng file — không cần người dùng phải chuyển tháng.
+ * Thay đổi ở file này để phối hợp với bản vá bên googleSync.js:
+ *  1) syncScheduleDayToGoogle(): tách rõ 2 loại lỗi — lỗi Event (Lịch chính +
+ *     Lịch OT) và lỗi Task (PCCV) — xử lý độc lập, lỗi bên này không làm mất
+ *     kết quả bên kia, và CẢ HAI đều được báo cáo đầy đủ cho người dùng thay
+ *     vì chỉ báo mỗi Task như bản trước.
+ *  2) syncToGoogleEcosystem(): thêm khoảng nghỉ ngắn (150ms) giữa mỗi ngày
+ *     khi đồng bộ cả tháng, để giảm khả năng dồn dập request gây rate-limit
+ *     — đây là nguyên nhân trực tiếp khiến bug "double" hay xảy ra khi đồng
+ *     bộ nhiều ngày cùng lúc.
+ *  3) MỚI: nút "Dọn dẹp trùng lặp" (btn-cleanup-duplicates) gọi
+ *     window.cleanupDuplicateGoogleData() bên googleSync.js để quét và xoá
+ *     sạch các Event/Task đã lỡ bị double từ TRƯỚC KHI có bản vá này — vì
+ *     sửa code chỉ ngăn lỗi phát sinh mới, không tự dọn dữ liệu cũ.
+ * ============================================================================
  *
- * Đồng thời làm rõ yêu cầu "chỉ cần Ngày + Mã Ca, các cột khác bỏ trống thì
- * mặc định Chính chủ": nếu thiếu cột "Phân loại" -> mặc định 'chinhchu'
- * (đã có sẵn nhưng viết lại tường minh hơn), nếu thiếu "Mã Ca" -> mặc định
- * 'OFF', các cột OT/PCCV/Nhân sự liên quan bỏ trống thì để rỗng, không bắt
- * buộc.
- *
- * LỖI 2 — "2 mũi tên chọn tháng không chuyển được": nút "Tháng sau" trong
- * index.html trước đây bị khai báo TRÙNG 2 thuộc tính id trên cùng 1 thẻ
- * (id="btn-dash-next-month" id="btn-next-month"). Theo chuẩn HTML, khi 1
- * thẻ có nhiều thuộc tính id trùng tên, trình duyệt chỉ nhận thuộc tính ĐẦU
- * TIÊN, thuộc tính sau bị bỏ qua hoàn toàn -> phần tử thực tế mang id
- * "btn-dash-next-month", không hề có id "btn-next-month" nào tồn tại trên
- * trang. Trong khi initScheduleEvents() bên dưới lại gắn sự kiện vào
- * "btn-next-month" -> bindIfPresent() không tìm thấy phần tử -> nút "Tháng
- * sau" không hề có sự kiện click nào được gắn, bấm vào không phản hồi gì.
- * FIX: đã xoá id trùng lặp trong index.html (xem file index.html đính kèm).
- * Sau khi id đúng lại, currentDate.setMonth(+1/-1) hoạt động không giới hạn
- * (không có ràng buộc chặn số tháng trong code), nên đã đáp ứng luôn yêu
- * cầu "chọn được tháng trước/sau, không giới hạn".
- * -------------------------------------------------------------------------
- *
- * ĐÍNH CHÍNH: Import Excel CHỈ lưu dữ liệu lên Portal/Drive để hiệu chỉnh —
- * KHÔNG tự động đẩy lên Google Calendar/Tasks (đúng luồng gốc: Import ->
- * Hiệu chỉnh -> bấm "Đồng bộ Google" khi đã sẵn sàng). Bản trước có thêm
- * nhầm bước tự động đồng bộ ngay sau Import, đã được gỡ bỏ.
- *
- * LỖI THẬT ĐANG XỬ LÝ: "Đồng bộ Google" đẩy đúng sự kiện Ca/OT lên Google
- * Calendar, nhưng PCCV KHÔNG lên được Google Tasks — và không có bất kỳ
- * thông báo lỗi nào hiển thị cho người dùng (âm thầm thất bại), vì hàm
- * syncGoogleTask() trong googleSync.js tự bắt lỗi bên trong rồi chỉ
- * console.error(), không báo ra ngoài; nếu thất bại (403 do chưa bật Google
- * Tasks API cho project, hoặc token cũ thiếu scope "tasks" từ trước khi
- * scope này được thêm vào, hoặc gapi.client.tasks chưa kịp tải xong) thì
- * coi như "chạy xong" một cách im lặng, người dùng chỉ thấy Lịch lên mà
- * không hề biết Task bị lỗi ở đâu.
- *
- * FIX: syncScheduleDayToGoogle() giờ tách riêng bước đồng bộ PCCV (Task) ra
- * khỏi bước đồng bộ Lịch — nếu Task lỗi thì KHÔNG làm hỏng phần Lịch đã
- * đồng bộ thành công, nhưng lỗi đó được GHI NHẬN LẠI (không còn bị nuốt âm
- * thầm) để syncToGoogleEcosystem() tổng hợp và BÁO RÕ CHO NGƯỜI DÙNG số
- * ngày Task bị lỗi + gợi ý nguyên nhân thường gặp, thay vì chỉ báo
- * "Đã đồng bộ thành công" chung chung như trước dù Task thực ra chưa lên.
- * (Xem thêm phần sửa tương ứng trong js/core/googleSync.js.)
- * -------------------------------------------------------------------------
- * (Giữ nguyên toàn bộ các bản vá trước đó: Settings/staffs fallback mặc
- * định, try/catch quanh openDayModal/saveDayEdit/deleteDayEdit,
- * bindIfPresent() chống 1 phần tử thiếu làm treo cả loạt sự kiện phía sau).
+ * (Giữ nguyên toàn bộ các bản vá trước đó: gom nhóm Import Excel theo tháng
+ * thực tế của từng dòng, fix 2 mũi tên chuyển tháng do id trùng lặp, Import
+ * Excel không tự động đẩy lên Google, Settings/staffs fallback mặc định,
+ * try/catch quanh openDayModal/saveDayEdit/deleteDayEdit, bindIfPresent()
+ * chống 1 phần tử thiếu làm treo cả loạt sự kiện phía sau).
  */
 
 window.monthlyScheduleData = window.monthlyScheduleData || {};
@@ -89,6 +55,10 @@ function getSafePortalSettings() {
         return window.portalSettings;
     }
     return { shifts: [], otShifts: [], tasks: [], staffs: [], coefficients: {} };
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
@@ -145,6 +115,7 @@ function initScheduleEvents() {
     bindIfPresent('btn-delete-day', 'click', deleteDayEdit);
     bindIfPresent('btn-sync-calendar', 'click', syncToGoogleEcosystem);
     bindIfPresent('btn-check-sync', 'click', checkSyncWithGoogleHandler);
+    bindIfPresent('btn-cleanup-duplicates', 'click', cleanupDuplicatesHandler);
     bindIfPresent('btn-add-meeting', 'click', () => openMeetingModal());
     bindIfPresent('btn-close-meeting-modal', 'click', closeMeetingModal);
     bindIfPresent('meeting-modal', 'click', (e) => { if (e.target.id === 'meeting-modal') closeMeetingModal(); });
@@ -354,22 +325,30 @@ function saveDayEdit() {
         renderCalendar();
         saveScheduleToDrive();
 
+        // Đồng bộ ngay 1 ngày vừa lưu lên Google (Event + Task) — dùng chung
+        // đúng hàm syncScheduleDayToGoogle() với luồng "Đồng bộ Google" hàng
+        // loạt, để đảm bảo tuân thủ nguyên tắc chống double (xoá thất bại thì
+        // không tạo mới) một cách nhất quán, thay vì gọi tay từng API riêng lẻ
+        // như trước (vốn chỉ đồng bộ Task, dễ gây lệch dữ liệu so với Event).
         if (typeof AppState !== 'undefined' && AppState.isLoggedIn) {
-            if (task && task.trim() !== '') {
-                let taskNote = [];
-                if (shift && shift !== 'OFF') taskNote.push(`Ca: ${shift}`);
-                if (ot) taskNote.push(`OT: ${ot}`);
-                if (typeof syncGoogleTask === 'function') {
-                    syncGoogleTask(savedKey, task, taskNote.join(' | ')).catch(err => {
-                        console.error(`[G-Portal] Lỗi đồng bộ Google Task ngày ${savedKey}:`, err);
-                        const apiErr = err && err.result && err.result.error;
-                        const detail = apiErr ? `${apiErr.code} - ${apiErr.message}` : (err && err.message) || String(err);
-                        alert(`⚠️ Đã lưu lịch/PCCV trên Portal, nhưng KHÔNG đồng bộ được lên Google Tasks cho ngày ${savedKey}.\nChi tiết: ${detail}\nCó thể do Google Tasks API chưa bật cho project, hoặc cần Đăng xuất/Đăng nhập lại để cấp quyền Tasks.`);
-                    });
+            const settings = getSafePortalSettings();
+            syncScheduleDayToGoogle(savedKey, window.monthlyScheduleData[savedKey], settings).then(result => {
+                if (result && (result.eventError || result.taskError)) {
+                    let msg = `⚠️ Đã lưu lịch ngày ${savedKey} trên Portal, nhưng gặp lỗi khi đồng bộ lên Google:\n`;
+                    if (result.eventError) {
+                        const apiErr = result.eventError.result && result.eventError.result.error;
+                        msg += `- Lịch (Event): ${apiErr ? `${apiErr.code} - ${apiErr.message}` : (result.eventError.message || String(result.eventError))}\n`;
+                    }
+                    if (result.taskError) {
+                        const apiErr = result.taskError.result && result.taskError.result.error;
+                        msg += `- Task PCCV: ${apiErr ? `${apiErr.code} - ${apiErr.message}` : (result.taskError.message || String(result.taskError))}\n`;
+                    }
+                    msg += `\nDữ liệu KHÔNG bị tạo trùng lặp (hệ thống đã huỷ bước tạo mới nếu không xoá được dữ liệu cũ). Vui lòng bấm "Đồng bộ Google" ở thanh công cụ để thử đồng bộ lại toàn tháng.`;
+                    alert(msg);
                 }
-            } else if (typeof deleteGoogleTask === 'function') {
-                deleteGoogleTask(savedKey).catch(err => console.error('Lỗi xóa Google Task:', err));
-            }
+            }).catch(err => {
+                console.error(`[G-Portal] Lỗi đồng bộ ngày ${savedKey}:`, err);
+            });
         }
     } catch (e) {
         console.error('Lỗi lưu hiệu chỉnh ngày:', e);
@@ -673,67 +652,72 @@ function deleteMeetingEdit() {
 
 /**
  * Đồng bộ 1 NGÀY lịch làm việc (ca chính + OT + PCCV) lên Google Calendar và
- * Google Tasks. Hàm dùng chung cho 2 nơi:
+ * Google Tasks. Hàm dùng chung cho 3 nơi:
  *  1) syncToGoogleEcosystem() — nút "Đồng bộ Google" thủ công, quét toàn bộ
  *     tháng đang xem.
- *  2) handleExcelUpload() — TỰ ĐỘNG gọi ngay sau khi Import Excel thành
- *     công, để không cần thao tác thêm bước "Đồng bộ Google" thủ công nữa.
- * Vì mỗi lần gọi đều xoá sự kiện/task cũ của đúng ngày đó rồi tạo lại (xem
- * syncCalendarEvent/syncOtCalendarEvent/syncGoogleTask trong googleSync.js),
- * nên gọi lại nhiều lần cho cùng 1 ngày là an toàn — ngày nào chưa có thì
- * thêm mới, ngày nào đã có thì tự cập nhật theo đúng dữ liệu mới nhất.
+ *  2) saveDayEdit() — tự động đồng bộ ngay sau khi hiệu chỉnh xong 1 ngày.
+ *  3) handleExcelUpload() (gián tiếp, qua "Đồng bộ Google" thủ công sau khi
+ *     import) — Import Excel CHỈ lưu dữ liệu để hiệu chỉnh, không tự đẩy lên
+ *     Google.
+ *
+ * FIX DOUBLE EVENT/TASK: kết quả trả về giờ tách RÕ 2 loại lỗi độc lập —
+ * result.eventError (lỗi khi đồng bộ Lịch chính/OT) và result.taskError (lỗi
+ * khi đồng bộ Task PCCV). Vì bên googleSync.js giờ luôn "xoá thất bại thì
+ * không tạo mới", nếu 1 trong 2 loại lỗi xảy ra thì NGÀY ĐÓ CHỈ ĐƠN GIẢN LÀ
+ * CHƯA ĐỒNG BỘ ĐƯỢC — không có khả năng tạo dữ liệu trùng lặp — và người
+ * dùng sẽ được báo rõ để có thể bấm đồng bộ lại.
  */
 async function syncScheduleDayToGoogle(key, dayData, settings) {
     const hasMainShift = dayData.shift && dayData.shift !== 'OFF';
     const hasOT = dayData.ot && dayData.ot.trim() !== '';
-    const result = { taskError: null };
+    const result = { eventError: null, taskError: null };
 
-    if (!hasMainShift && !hasOT) {
-        if (typeof window.deleteWorkCalendarEvent === 'function') await window.deleteWorkCalendarEvent(key);
-        if (typeof window.deleteOtCalendarEvent === 'function') await window.deleteOtCalendarEvent(key);
-    } else {
-        let shiftTime = "08:00 - 17:00";
+    try {
+        if (!hasMainShift && !hasOT) {
+            if (typeof window.deleteWorkCalendarEvent === 'function') await window.deleteWorkCalendarEvent(key);
+            if (typeof window.deleteOtCalendarEvent === 'function') await window.deleteOtCalendarEvent(key);
+        } else {
+            let shiftTime = "08:00 - 17:00";
 
-        if (hasMainShift) {
-            const conf = (settings.shifts || []).find(s => s.code === dayData.shift);
-            if (conf) shiftTime = conf.time;
-        } else if (!hasMainShift && hasOT) {
-            const conf = (settings.otShifts || []).find(s => s.code === dayData.ot);
-            if (conf) shiftTime = conf.time;
-        }
+            if (hasMainShift) {
+                const conf = (settings.shifts || []).find(s => s.code === dayData.shift);
+                if (conf) shiftTime = conf.time;
+            } else if (!hasMainShift && hasOT) {
+                const conf = (settings.otShifts || []).find(s => s.code === dayData.ot);
+                if (conf) shiftTime = conf.time;
+            }
 
-        let desc = [];
-        if (dayData.task) desc.push(`PCCV: ${dayData.task}`);
-        if (hasMainShift && hasOT) desc.push(`OT: ${dayData.ot}`);
+            let desc = [];
+            if (dayData.task) desc.push(`PCCV: ${dayData.task}`);
+            if (hasMainShift && hasOT) desc.push(`OT: ${dayData.ot}`);
 
-        if (typeof syncCalendarEvent === 'function') await syncCalendarEvent(key, dayData, shiftTime, desc.join('\n'));
+            if (typeof syncCalendarEvent === 'function') await syncCalendarEvent(key, dayData, shiftTime, desc.join('\n'));
 
-        if (hasMainShift && hasOT) {
-            let otTime = null;
-            const otConf = (settings.otShifts || []).find(s => s.code === dayData.ot);
-            if (otConf) otTime = otConf.time;
+            if (hasMainShift && hasOT) {
+                let otTime = null;
+                const otConf = (settings.otShifts || []).find(s => s.code === dayData.ot);
+                if (otConf) otTime = otConf.time;
 
-            if (otTime && typeof window.syncOtCalendarEvent === 'function') {
-                let otDesc = [`Ca chính: ${dayData.shift}`];
-                if (dayData.task) otDesc.push(`PCCV: ${dayData.task}`);
-                await window.syncOtCalendarEvent(key, dayData, otTime, otDesc.join('\n'));
+                if (otTime && typeof window.syncOtCalendarEvent === 'function') {
+                    let otDesc = [`Ca chính: ${dayData.shift}`];
+                    if (dayData.task) otDesc.push(`PCCV: ${dayData.task}`);
+                    await window.syncOtCalendarEvent(key, dayData, otTime, otDesc.join('\n'));
+                } else if (typeof window.deleteOtCalendarEvent === 'function') {
+                    await window.deleteOtCalendarEvent(key);
+                }
             } else if (typeof window.deleteOtCalendarEvent === 'function') {
                 await window.deleteOtCalendarEvent(key);
             }
-        } else if (typeof window.deleteOtCalendarEvent === 'function') {
-            await window.deleteOtCalendarEvent(key);
         }
+    } catch (eventErr) {
+        console.error(`[G-Portal] Lỗi đồng bộ Lịch (Event) ngày ${key}:`, eventErr);
+        result.eventError = eventErr;
     }
 
-    // PCCV (Google Task) — TÁCH RIÊNG khỏi phần Lịch phía trên. Trước đây
-    // syncGoogleTask()/deleteGoogleTask() tự bắt lỗi bên trong rồi chỉ
-    // console.error(), khiến lỗi (VD: 403 do Google Tasks API chưa được bật
-    // cho project, hoặc token cũ thiếu quyền "tasks") bị "nuốt" âm thầm —
-    // người dùng thấy Lịch lên Calendar bình thường nên tưởng đã xong, không
-    // hề biết Task bị lỗi. Nay các hàm này sẽ NÉM LẠI lỗi, và ở đây bắt lại
-    // để KHÔNG làm hỏng phần Lịch đã đồng bộ thành công, đồng thời trả lỗi
-    // đó ra ngoài qua result.taskError để syncToGoogleEcosystem() tổng hợp
-    // và báo rõ ràng cho người dùng biết chính xác ngày nào, lỗi gì.
+    // PCCV (Google Task) — TÁCH RIÊNG khỏi phần Lịch phía trên. Lỗi bên này
+    // không ảnh hưởng tới kết quả phần Lịch (và ngược lại), cả 2 đều được ghi
+    // nhận độc lập trong result để nơi gọi tổng hợp và báo đầy đủ cho người
+    // dùng, thay vì chỉ báo mỗi Task như bản trước.
     try {
         if (dayData.task && dayData.task.trim() !== '') {
             let taskNote = [];
@@ -758,16 +742,34 @@ async function syncToGoogleEcosystem() {
     const meetingItems = Object.values(window.monthlyMeetingsData || {});
     if (keys.length === 0 && meetingItems.length === 0) return alert("Không có dữ liệu để đồng bộ.");
 
-    alert("Đang tiến hành đồng bộ nền... Quá trình này có thể mất vài giây, vui lòng không tắt trình duyệt.");
+    alert("Đang tiến hành đồng bộ nền... Với lịch cả tháng quá trình này có thể mất khoảng vài chục giây (hệ thống cố tình đi chậm lại một chút để tránh bị Google giới hạn tốc độ), vui lòng không tắt trình duyệt.");
 
     const taskFailedDates = [];
+    const eventFailedDates = [];
     let firstTaskErrorDetail = '';
+    let firstEventErrorDetail = '';
+
+    const btn = document.getElementById('btn-sync-calendar');
+    const originalBtnHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Đang đồng bộ...`;
+    }
 
     try {
         const settings = getSafePortalSettings();
 
-        for (const key of keys) {
+        for (let i = 0; i < keys.length; i++) {
+            const key = keys[i];
             const result = await syncScheduleDayToGoogle(key, window.monthlyScheduleData[key], settings);
+
+            if (result && result.eventError) {
+                eventFailedDates.push(key);
+                if (!firstEventErrorDetail) {
+                    const apiErr = result.eventError && result.eventError.result && result.eventError.result.error;
+                    firstEventErrorDetail = apiErr ? `${apiErr.code} - ${apiErr.message}` : (result.eventError.message || String(result.eventError));
+                }
+            }
             if (result && result.taskError) {
                 taskFailedDates.push(key);
                 if (!firstTaskErrorDetail) {
@@ -775,29 +777,47 @@ async function syncToGoogleEcosystem() {
                     firstTaskErrorDetail = apiErr ? `${apiErr.code} - ${apiErr.message}` : (result.taskError.message || String(result.taskError));
                 }
             }
+
+            // FIX DOUBLE EVENT/TASK: nghỉ 1 nhịp ngắn giữa mỗi ngày để tránh
+            // dồn quá nhiều request lên Google API cùng lúc — nguyên nhân
+            // chính khiến bước xoá dữ liệu cũ dễ bị lỗi 429/403 rate-limit
+            // giữa chừng ở các bản trước. Không áp dụng cho ngày cuối cùng.
+            if (i < keys.length - 1) await sleep(150);
         }
 
         for (const meeting of meetingItems) {
-            if (typeof syncMeetingCalendarEvent === 'function') await syncMeetingCalendarEvent(meeting);
+            if (typeof syncMeetingCalendarEvent === 'function') {
+                try {
+                    await syncMeetingCalendarEvent(meeting);
+                } catch (mErr) {
+                    console.error(`[G-Portal] Lỗi đồng bộ Lịch họp ${meeting.id}:`, mErr);
+                }
+            }
         }
 
-        if (taskFailedDates.length === 0) {
-            alert("✅ Đã đồng bộ Lịch, Task PCCV và Lịch họp lên Google thành công!");
+        if (taskFailedDates.length === 0 && eventFailedDates.length === 0) {
+            alert("✅ Đã đồng bộ Lịch, Task PCCV và Lịch họp lên Google thành công! (Không có Event/Task nào bị trùng lặp.)");
         } else {
-            // Lịch/Calendar vẫn đã lên bình thường (không phụ thuộc Task), chỉ
-            // riêng Task PCCV bị lỗi -> báo rõ để không còn "im lặng" như trước.
-            let msg = `⚠️ Đã đồng bộ xong Lịch (Ca/OT) và Lịch họp lên Google Calendar.\n`;
-            msg += `Nhưng Task PCCV của ${taskFailedDates.length} ngày KHÔNG đồng bộ được lên Google Tasks: ${taskFailedDates.slice(0, 10).join(', ')}${taskFailedDates.length > 10 ? '...' : ''}.\n`;
-            if (firstTaskErrorDetail) msg += `Chi tiết lỗi: ${firstTaskErrorDetail}\n`;
-            msg += `Nguyên nhân thường gặp:\n`;
-            msg += `- Google Tasks API chưa được BẬT (Enable) trong Google Cloud Console cho project đang dùng API_KEY/CLIENT_ID này.\n`;
-            msg += `- Tài khoản đăng nhập từ trước khi quyền "Tasks" được thêm vào hệ thống -> hãy Đăng xuất rồi Đăng nhập lại để cấp lại đầy đủ quyền.\n`;
-            msg += `Xem Console (F12) để biết lỗi đầy đủ của từng ngày.`;
+            let msg = `⚠️ Đồng bộ hoàn tất nhưng có một số ngày gặp lỗi:\n\n`;
+            if (eventFailedDates.length > 0) {
+                msg += `• Lịch (Ca/OT) lỗi ở ${eventFailedDates.length} ngày: ${eventFailedDates.slice(0, 10).join(', ')}${eventFailedDates.length > 10 ? '...' : ''}\n`;
+                if (firstEventErrorDetail) msg += `  Chi tiết: ${firstEventErrorDetail}\n`;
+            }
+            if (taskFailedDates.length > 0) {
+                msg += `• Task PCCV lỗi ở ${taskFailedDates.length} ngày: ${taskFailedDates.slice(0, 10).join(', ')}${taskFailedDates.length > 10 ? '...' : ''}\n`;
+                if (firstTaskErrorDetail) msg += `  Chi tiết: ${firstTaskErrorDetail}\n`;
+            }
+            msg += `\nCÁC NGÀY BỊ LỖI KHÔNG TẠO TRÙNG LẶP (hệ thống đã huỷ bước tạo mới nếu không xoá được dữ liệu cũ) — chỉ đơn giản là CHƯA đồng bộ được. Vui lòng bấm "Đồng bộ Google" lại (có thể chờ 1-2 phút để Google hết giới hạn tốc độ), hoặc kiểm tra quyền Tasks API / kết nối mạng.`;
             alert(msg);
         }
     } catch (err) {
         console.error('Lỗi đồng bộ Google Ecosystem:', err);
         alert("Có lỗi xảy ra trong quá trình đồng bộ lên Google. Một phần dữ liệu có thể đã đồng bộ thành công, vui lòng kiểm tra lại Google Calendar/Tasks hoặc thử đồng bộ lại.");
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalBtnHtml;
+        }
     }
 }
 
@@ -830,6 +850,48 @@ async function checkSyncWithGoogleHandler() {
     } catch (err) {
         console.error('Lỗi kiểm tra đồng bộ với Google:', err);
         alert("Có lỗi xảy ra khi kiểm tra đồng bộ với Google. Vui lòng thử lại sau.");
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
+    }
+}
+
+/**
+ * MỚI: "Dọn dẹp trùng lặp" — quét Event (Lịch chính + Lịch OT + Lịch họp) và
+ * Task PCCV của THÁNG ĐANG XEM, gom nhóm theo ngày/loại, giữ lại 1 bản mới
+ * nhất và xoá các bản trùng lặp còn lại. Dùng để dọn sạch dữ liệu đã lỡ bị
+ * double từ TRƯỚC KHI có bản vá chống double ở trên (bản vá chỉ ngăn lỗi mới
+ * phát sinh, không tự xoá dữ liệu cũ đã lỡ bị trùng).
+ */
+async function cleanupDuplicatesHandler() {
+    if (typeof AppState === 'undefined' || !AppState.isLoggedIn) return alert("Vui lòng đăng nhập Google trước!");
+    if (typeof window.cleanupDuplicateGoogleData !== 'function') {
+        return alert("Chức năng dọn dẹp trùng lặp chưa sẵn sàng, vui lòng tải lại trang.");
+    }
+
+    const confirmed = confirm('Hệ thống sẽ quét toàn bộ Event (Lịch chính/OT/Họp) và Task PCCV trong THÁNG ĐANG XEM. Với mỗi ngày có nhiều hơn 1 bản trùng, hệ thống sẽ GIỮ LẠI bản mới nhất và XOÁ các bản còn lại trên Google Calendar/Tasks.\n\nBạn có muốn tiếp tục?');
+    if (!confirmed) return;
+
+    const btn = document.getElementById('btn-cleanup-duplicates');
+    const originalHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Đang dọn dẹp...`;
+    }
+
+    try {
+        const result = await window.cleanupDuplicateGoogleData(currentDate);
+        if (result.removedEvents === 0 && result.removedTasks === 0) {
+            alert("✅ Không phát hiện Event/Task nào bị trùng lặp trong tháng này.");
+        } else {
+            alert(`✅ Đã dọn dẹp xong: xoá ${result.removedEvents} Event trùng lặp và ${result.removedTasks} Task trùng lặp trên Google Calendar/Tasks (đã giữ lại đúng 1 bản mới nhất cho mỗi ngày).`);
+        }
+        if (typeof checkSyncWithGoogleHandler === 'function') await checkSyncWithGoogleHandler();
+    } catch (err) {
+        console.error('Lỗi dọn dẹp trùng lặp:', err);
+        alert("Có lỗi xảy ra khi dọn dẹp trùng lặp. Vui lòng thử lại sau, hoặc kiểm tra Console (F12) để biết chi tiết.");
     } finally {
         if (btn) {
             btn.disabled = false;

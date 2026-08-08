@@ -1,120 +1,67 @@
 /**
  * googleSync.js - Google Auth + Drive + Calendar + Tasks
  *
- * BẢN VÁ MỚI NHẤT — LỖI "Maximum call stack size exceeded" KHI ĐỒNG BỘ TASK:
- * -------------------------------------------------------------------------
- * TRIỆU CHỨNG: Bấm "Đồng bộ Google", Lịch (Ca/OT) và Lịch họp lên Google
- * Calendar bình thường, nhưng Task PCCV báo lỗi "Maximum call stack size
- * exceeded" cho hàng loạt ngày.
+ * ============================================================================
+ * BẢN VÁ MỚI NHẤT — LỖI "DOUBLE EVENT + TASK" (Event/Task bị nhân đôi)
+ * ============================================================================
+ * TRIỆU CHỨNG: Những ngày đã có sẵn Event/Task trên Google, khi người dùng
+ * bổ sung thêm nội dung (thêm ngày mới, sửa ngày khác) rồi bấm "Đồng bộ
+ * Google" (đồng bộ lại NGUYÊN THÁNG), các ngày CŨ vốn không hề thay đổi gì
+ * cũng bị tạo thêm 1 Event/Task trùng lặp trên Google Calendar/Tasks.
  *
- * NGUYÊN NHÂN: ở cuối file có đoạn (đã tồn tại từ code gốc, không phải do
- * các bản vá trước gây ra):
- *   async function findGoogleTaskByDatePublicWrapper(dateKey) {
- *       return findGoogleTaskByDate(dateKey);
- *   }
- *   window.findGoogleTaskByDate = findGoogleTaskByDatePublicWrapper;
- * Vì đây là script thường (không phải ES module), hàm khai báo
- * "function findGoogleTaskByDate(...)" ở top-level CHÍNH LÀ
- * window.findGoogleTaskByDate ngay từ đầu. Dòng cuối cùng ở trên GHI ĐÈ
- * window.findGoogleTaskByDate bằng chính cái wrapper. Việc phân giải 1 tên
- * hàm trần (không có "window." hay "this.") trong 1 script thường được tra
- * cứu qua thuộc tính của window TẠI THỜI ĐIỂM GỌI, không phải tại thời điểm
- * khai báo — nên sau dòng ghi đè đó, MỌI lời gọi tên trần
- * findGoogleTaskByDate(...) ở bất kỳ đâu trong file (kể cả bên trong chính
- * wrapper) đều trỏ lại đúng cái wrapper đó -> wrapper tự gọi lại chính nó ->
- * đệ quy vô hạn -> tràn stack.
+ * NGUYÊN NHÂN GỐC RỄ: Toàn bộ luồng đồng bộ 1 ngày luôn theo mô hình
+ * "XOÁ SỰ KIỆN CŨ (theo extendedProperties) RỒI TẠO MỚI". Nhưng 2 hàm dùng
+ * để tìm/xoá sự kiện cũ (findEventsByExtendedPropsInRange và
+ * deleteCalendarEventsByProps) trước đây tự bọc try/catch và chỉ
+ * console.error() — nuốt lỗi hoàn toàn, không báo ra ngoài:
+ *   - Nếu gapi.client.calendar.events.list() thất bại giữa chừng (403/429
+ *     rate-limit do Google giới hạn số request/giây, lỗi mạng tạm thời...),
+ *     hàm coi như "không tìm thấy sự kiện nào cần xoá" (trả về mảng RỖNG)
+ *     dù thực ra sự kiện cũ vẫn còn nguyên trên Calendar.
+ *   - Nếu gapi.client.calendar.events.delete() thất bại, lỗi cũng bị nuốt
+ *     tương tự.
+ * Trong khi đó syncCalendarEvent()/syncOtCalendarEvent() ở BƯỚC SAU luôn vô
+ * điều kiện gọi events.insert() để tạo sự kiện mới, KHÔNG hề biết bước xoá
+ * phía trên đã thất bại. Kết quả: sự kiện CŨ (chưa xoá được) + sự kiện MỚI
+ * (vừa tạo) => XUẤT HIỆN 2 sự kiện cho cùng 1 ngày.
  *
- * Lỗi này TỒN TẠI TỪ TRƯỚC nhưng "ngủ yên": trước đây syncGoogleTask()/
- * deleteGoogleTask() luôn return sớm ở bước kiểm tra "!gapi.client.tasks"
- * (do Tasks API chưa Enable / thiếu scope), nên code không bao giờ chạy tới
- * đoạn gọi findGoogleTaskByDate() để kích hoạt đệ quy. Sau khi Enable Tasks
- * API / đăng nhập lại để cấp quyền "tasks" (theo hướng dẫn ở bản vá trước),
- * gapi.client.tasks đã sẵn sàng, code chạy sâu hơn và đâm đúng vào bug này.
+ * Lỗi này xảy ra "ngẫu nhiên, lặp lại" đúng như mô tả vì nó phụ thuộc vào
+ * việc có bị Google giới hạn tần suất API hay không — mà xác suất này tăng
+ * mạnh khi đồng bộ CẢ THÁNG cùng lúc (mỗi ngày cần 1 lượt LIST + N lượt
+ * DELETE + 1 lượt INSERT, nhân với 3 luồng: Lịch chính, Lịch OT, Task —
+ * với 1 tháng ~30 ngày có dữ liệu thì tổng số request bắn liên tiếp trong
+ * vài giây có thể lên tới hàng trăm, rất dễ chạm giới hạn của Google).
  *
- * FIX: KHÔNG bọc thêm 1 lớp wrapper gọi lại tên trần nữa — export thẳng
- * tham chiếu tới hàm gốc: window.findGoogleTaskByDate = findGoogleTaskByDate;
- * -------------------------------------------------------------------------
+ * FIX ÁP DỤNG:
+ *  1) Bỏ HOÀN TOÀN các try/catch nuốt lỗi ở findEventsByExtendedPropsInRange
+ *     và deleteCalendarEventsByProps — để lỗi được NÉM RA NGOÀI (throw).
+ *  2) syncCalendarEvent() / syncOtCalendarEvent() / syncMeetingCalendarEvent()
+ *     giờ KHÔNG còn tự bọc try/catch quanh bước insert nữa — nếu bước xoá
+ *     (hoặc tạo) thất bại, lỗi sẽ ném ra cho nơi gọi (schedule.js) xử lý —
+ *     đúng nguyên tắc đã áp dụng cho Google Task từ trước: "im lặng nuốt lỗi
+ *     là nguồn gốc mọi bug ẩn, phải luôn ném lỗi ra để nơi gọi biết và báo
+ *     cho người dùng". Quan trọng nhất: NẾU XOÁ THẤT BẠI THÌ KHÔNG ĐƯỢC TẠO
+ *     MỚI — đây chính là điều kiện triệt tiêu hoàn toàn khả năng bị double.
+ *  3) Thêm cơ chế TỰ THỬ LẠI (retry + exponential backoff) cho các lệnh gọi
+ *     Calendar API hay gặp lỗi tạm thời (429/403 rate-limit, 500/503) — xem
+ *     hàm withGoogleApiRetry() — giúp giảm mạnh khả năng phải "bó tay" giữa
+ *     chừng chỉ vì Google tạm thời giới hạn tốc độ.
+ *  4) BỔ SUNG MỚI: window.cleanupDuplicateGoogleData(monthDate) — hàm quét
+ *     và DỌN DẸP các Event/Task đã lỡ bị tạo trùng lặp TỪ TRƯỚC KHI CÓ BẢN
+ *     VÁ NÀY (sửa code chỉ ngăn lỗi phát sinh MỚI, không tự xoá dữ liệu cũ
+ *     đã lỡ bị double). Với mỗi nhóm (cùng ngày + cùng loại) có nhiều hơn 1
+ *     mục, hàm giữ lại đúng 1 bản (bản có "updated" mới nhất) và xoá các
+ *     bản còn lại. Được gắn vào nút mới "Dọn dẹp trùng lặp" trên giao diện
+ *     Lịch làm việc (xem schedule.js + index.html).
+ * ============================================================================
  *
- * BẢN VÁ TRƯỚC ĐÓ — LỖI "PCCV KHÔNG LÊN ĐƯỢC GOOGLE TASKS" (âm thầm):
- * -------------------------------------------------------------------------
- * TRIỆU CHỨNG: Bấm "Đồng bộ Google" (hoặc lưu hiệu chỉnh 1 ngày), sự kiện
- * Ca làm/Tăng cường lên Google Calendar bình thường, nhưng PCCV không xuất
- * hiện trên Google Tasks — và không có bất kỳ cảnh báo nào trên giao diện.
- *
- * NGUYÊN NHÂN: syncGoogleTask() và deleteGoogleTask() trước đây tự bắt lỗi
- * bên trong bằng try/catch rồi chỉ console.error() — nuốt lỗi hoàn toàn,
- * không throw ra ngoài. Nếu request tới Google Tasks API thất bại (403 do
- * "Google Tasks API" chưa được BẬT (Enable) trong Google Cloud Console cho
- * đúng project đang dùng CLIENT_ID/API_KEY này, hoặc access token hiện tại
- * thiếu scope "tasks" — ví dụ do người dùng đăng nhập TRƯỚC KHI scope này
- * được thêm vào code, token cũ trong localStorage vẫn còn hạn nên không bị
- * buộc đăng nhập lại — hoặc do tạm thời mất mạng), hàm coi như "chạy xong"
- * một cách im lặng: Task không được tạo/cập nhật nhưng không ai biết.
- *
- * FIX: syncGoogleTask() và deleteGoogleTask() giờ NÉM LẠI (re-throw) lỗi
- * sau khi log, để nơi gọi (schedule.js: syncScheduleDayToGoogle/saveDayEdit)
- * bắt được và HIỂN THỊ RÕ cho người dùng biết chính xác ngày nào, lỗi gì —
- * thay vì báo "Đồng bộ thành công" chung chung dù Task thực ra chưa lên.
- * -------------------------------------------------------------------------
- *
- * BẢN CẬP NHẬT TRƯỚC ĐÓ — TÁCH RIÊNG LỊCH TĂNG CƯỜNG (OT):
- * -------------------------------------------------------------------------
- * Trước đây sự kiện Tăng cường (OT) được đẩy chung vào CÙNG một lịch với
- * Ca làm việc chính (workCalendarId), chỉ phân biệt bằng
- * extendedProperties.private.gportalType = 'work-ot'. Nay theo yêu cầu,
- * toàn bộ sự kiện OT sẽ được đẩy sang MỘT LỊCH GOOGLE RIÊNG BIỆT để tách
- * bạch trực quan "Lịch làm" và "Lịch OT" ngay trên giao diện Google
- * Calendar (mỗi lịch 1 màu, có thể ẩn/hiện độc lập).
- *
- * ID Lịch OT mặc định (có thể ghi đè qua portalSettings.googleCalendar.otCalendarId,
- * tương tự cách workCalendarId / meetingCalendarId đang hoạt động):
- *   a4fd9cc3792252ef744f35ecd2265d1647e9f9d6f9984d15624cf68ea82850ab@group.calendar.google.com
- *
- * Toàn bộ luồng liên quan đến OT đã được cập nhật để dùng đúng Lịch OT này:
- *   - syncOtCalendarEvent(): tạo/cập nhật sự kiện OT trên Lịch OT.
- *   - deleteOtCalendarEvent(): xoá sự kiện OT khỏi Lịch OT.
- *   - reconcileMonthWithGoogle(): đọc lại sự kiện OT từ Lịch OT (thay vì đọc
- *     từ Lịch làm việc chính như trước) khi "Kiểm tra đồng bộ".
- * Lịch làm việc chính (Ca chính, gportalType: 'work') và Lịch họp
- * (gportalType: 'meeting') không thay đổi, vẫn hoạt động như cũ.
- * -------------------------------------------------------------------------
- *
- * BẢN VÁ LỖI "GIỮ ĐĂNG NHẬP" (trước đó):
- * -------------------------------------------------------------------------
- * BỐI CẢNH: Google Identity Services (token client) dùng cho ứng dụng thuần
- * client-side (không backend) KHÔNG cấp refresh token — chỉ cấp access token
- * sống ngắn (~1 giờ). Cách duy nhất để "giữ đăng nhập" lâu dài mà không bắt
- * người dùng nhập lại mật khẩu là liên tục MƯỢN LẠI phiên SSO (cookie đăng
- * nhập Google) của chính trình duyệt đó bằng cách gọi
- * tokenClient.requestAccessToken({ prompt: '' }) — lệnh này chạy NGẦM, không
- * hiện popup, miễn là người dùng vẫn còn đăng nhập Google & đã từng đồng ý
- * cấp quyền cho ứng dụng trên trình duyệt/máy đó. Đây cũng chính là lý do
- * hành vi "cùng máy thì giữ đăng nhập, đổi máy thì phải đăng nhập lại" là
- * điều tự nhiên (vì máy khác không có cookie phiên Google đó).
- *
- * LỖI ĐÃ SỬA: trước đây cơ chế khôi phục ngầm này gần như KHÔNG BAO GIỜ được
- * kích hoạt, vì app.js xoá token hết hạn khỏi localStorage NGAY khi trang vừa
- * tải (trước khi thư viện Google kịp sẵn sàng) — khiến điều kiện kiểm tra
- * "có token cũ để thử khôi phục" ở đây luôn sai. Nay app.js không tự xoá
- * token nữa (xem app.js), và toàn bộ logic khôi phục ngầm được gom lại thành
- * hàm attemptSilentSessionRestore() bên dưới, dựa vào "dấu vết phiên đăng
- * nhập" (SESSION_MARKER_KEY) — một cờ KHÔNG có hạn sử dụng, chỉ mất khi
- * người dùng chủ động Đăng xuất — để quyết định có nên thử mượn lại phiên
- * SSO hay không, bất kể access token cũ còn tồn tại trong localStorage hay
- * không.
- *
- * BỔ SUNG: lắng nghe sự kiện visibilitychange — khi người dùng quay lại tab
- * sau một thời gian tab bị ẩn/máy ngủ (lúc đó setTimeout hẹn giờ làm mới token
- * có thể không chạy đúng giờ do trình duyệt tạm dừng tab nền), hệ thống sẽ
- * kiểm tra lại hạn token và làm mới ngay nếu cần, tránh trường hợp quay lại
- * tab mà thấy đã "rớt" đăng nhập.
- *
- * (Giữ nguyên toàn bộ các fix trước đó: polling gapi/gis, gapi.client.init
+ * (Giữ nguyên toàn bộ các bản vá trước đó: polling gapi/gis, gapi.client.init
  * lỗi âm thầm, isLoggedIn set đồng bộ, logout bọc try/catch/finally, cảnh
  * báo file://, cấu hình Calendar ID từ Cài đặt, xác định sự kiện G-Portal qua
- * extendedProperties.private, lấy hồ sơ Google dùng chung toàn app, các fix
- * đồng bộ Lịch/Task/OT/đồng bộ ngược đã có từ trước...)
- * -------------------------------------------------------------------------
+ * extendedProperties.private, lấy hồ sơ Google dùng chung toàn app, giữ đăng
+ * nhập qua silent SSO, tách lịch OT riêng, đồng bộ ngược "Kiểm tra đồng bộ",
+ * fix đệ quy vô hạn findGoogleTaskByDate...)
+ * ============================================================================
  */
 
 const CLIENT_ID = '714398035986-2jdd33n4h7kguauq73jbirq6rlfpkte2.apps.googleusercontent.com';
@@ -184,6 +131,42 @@ function clearSessionMarker() {
 function hasSessionMarker() {
     try { return localStorage.getItem(SESSION_MARKER_KEY) === '1'; } catch (e) { return false; }
 }
+
+// ============================================================
+// TIỆN ÍCH MỚI: gọi API Google kèm TỰ ĐỘNG THỬ LẠI khi gặp lỗi tạm thời
+// (429 rate-limit, 403 rateLimitExceeded/userRateLimitExceeded, 500, 503).
+// Đây là một trong các mảnh ghép giúp triệt tiêu lỗi "double Event/Task":
+// giảm mạnh khả năng bước xoá sự kiện cũ bị thất bại giữa chừng chỉ vì
+// Google tạm thời giới hạn tốc độ gọi API.
+// ============================================================
+function isRetryableGoogleApiError(err) {
+    const apiErr = err && err.result && err.result.error;
+    const status = (apiErr && apiErr.code) || err.status || 0;
+    if (status === 429 || status === 500 || status === 503) return true;
+    if (status === 403) {
+        const reasons = (apiErr && apiErr.errors) ? apiErr.errors.map(e => e.reason) : [];
+        return reasons.some(r => r === 'rateLimitExceeded' || r === 'userRateLimitExceeded' || r === 'quotaExceeded');
+    }
+    // Lỗi mạng (không có response) cũng coi là tạm thời, đáng thử lại.
+    return !apiErr && !err.status;
+}
+
+async function withGoogleApiRetry(fn, { retries = 4, baseDelayMs = 500, label = '' } = {}) {
+    let lastErr;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+            return await fn();
+        } catch (err) {
+            lastErr = err;
+            if (!isRetryableGoogleApiError(err) || attempt === retries) throw err;
+            const delayMs = baseDelayMs * Math.pow(2, attempt) + Math.floor(Math.random() * 250);
+            console.warn(`[G-Portal Sync] ${label || 'Gọi API Google'} gặp lỗi tạm thời, thử lại lần ${attempt + 1}/${retries} sau ${delayMs}ms...`, err);
+            await new Promise(res => setTimeout(res, delayMs));
+        }
+    }
+    throw lastErr;
+}
+window.gportalSleep = function (ms) { return new Promise(res => setTimeout(res, ms)); };
 
 // ============================================================
 // 0. POLLING: chờ 2 thư viện gapi + Google Identity Services sẵn sàng
@@ -557,7 +540,7 @@ window.handleSignoutClick = function () {
 
 const DEFAULT_WORK_CALENDAR_ID = 'primary';
 const DEFAULT_MEETING_CALENDAR_ID = '0770c7fff204ae1af3aa25c9a88b00c17bb59c5f6f0b03dd5aa6b51fd3b567d5@group.calendar.google.com';
-// MỚI — Lịch riêng dành cho sự kiện Tăng cường (OT), tách biệt hoàn toàn khỏi
+// Lịch riêng dành cho sự kiện Tăng cường (OT), tách biệt hoàn toàn khỏi
 // Lịch làm việc chính để dễ theo dõi/ẩn-hiện riêng trên Google Calendar.
 const DEFAULT_OT_CALENDAR_ID = 'a4fd9cc3792252ef744f35ecd2265d1647e9f9d6f9984d15624cf68ea82850ab@group.calendar.google.com';
 
@@ -598,27 +581,28 @@ function getMonthRangeISO(dateObj) {
 }
 
 // ---------- Tìm sự kiện Lịch theo extendedProperties.private trong một khoảng thời gian ----------
+// QUAN TRỌNG (xem ghi chú đầu file): KHÔNG được tự bọc try/catch nuốt lỗi ở
+// đây nữa. Nếu gapi.client.calendar.events.list() thất bại (VD 429
+// rate-limit), lỗi PHẢI được ném ra ngoài để deleteCalendarEventsByProps() và
+// các hàm gọi nó (syncCalendarEvent/syncOtCalendarEvent) biết mà DỪNG LẠI,
+// không được tiếp tục tạo sự kiện mới — nếu không sẽ tạo ra Event trùng lặp.
 async function findEventsByExtendedPropsInRange(timeMin, timeMax, calendarId, propFilters) {
     const propArray = Object.entries(propFilters).map(([k, v]) => `${k}=${v}`);
     let items = [];
     let pageToken;
-    try {
-        do {
-            const response = await gapi.client.calendar.events.list({
-                calendarId: calendarId,
-                timeMin: timeMin,
-                timeMax: timeMax,
-                singleEvents: true,
-                privateExtendedProperty: propArray,
-                maxResults: 250,
-                pageToken: pageToken
-            });
-            items = items.concat(response.result.items || []);
-            pageToken = response.result.nextPageToken;
-        } while (pageToken);
-    } catch (err) {
-        console.error('Lỗi khi tìm sự kiện Lịch (theo khoảng thời gian):', err);
-    }
+    do {
+        const response = await withGoogleApiRetry(() => gapi.client.calendar.events.list({
+            calendarId: calendarId,
+            timeMin: timeMin,
+            timeMax: timeMax,
+            singleEvents: true,
+            privateExtendedProperty: propArray,
+            maxResults: 250,
+            pageToken: pageToken
+        }), { label: `Tìm sự kiện Lịch (${propArray.join(',')})` });
+        items = items.concat(response.result.items || []);
+        pageToken = response.result.nextPageToken;
+    } while (pageToken);
     return items;
 }
 
@@ -628,18 +612,18 @@ async function findEventsByExtendedProps(dateStr, calendarId, propFilters) {
     return findEventsByExtendedPropsInRange(minTime, maxTime, calendarId, propFilters);
 }
 
+// QUAN TRỌNG: không nuốt lỗi. Nếu tìm hoặc xoá thất bại, ném lỗi ra ngoài để
+// syncCalendarEvent()/syncOtCalendarEvent() KHÔNG được phép tạo sự kiện mới
+// tiếp theo — đây là điều kiện cốt lõi để triệt tiêu lỗi Event bị double.
 async function deleteCalendarEventsByProps(dateStr, calendarId, propFilters) {
-    try {
-        const events = await findEventsByExtendedProps(dateStr, calendarId, propFilters);
-        for (const ev of events) {
-            await gapi.client.calendar.events.delete({
-                calendarId: calendarId,
-                eventId: ev.id
-            });
-        }
-    } catch (err) {
-        console.error("Lỗi khi xóa sự kiện Lịch:", err);
+    const events = await findEventsByExtendedProps(dateStr, calendarId, propFilters);
+    for (const ev of events) {
+        await withGoogleApiRetry(() => gapi.client.calendar.events.delete({
+            calendarId: calendarId,
+            eventId: ev.id
+        }), { label: `Xoá sự kiện Lịch ngày ${dateStr}` });
     }
+    return events.length;
 }
 
 function buildShiftEventTitle(dayData) {
@@ -658,10 +642,16 @@ function buildShiftEventTitle(dayData) {
 }
 window.buildShiftEventTitle = buildShiftEventTitle;
 
-// FIX #2 — CA ĐÊM: nếu giờ kết thúc <= giờ bắt đầu (VD 21:30 -> 07:30) thì ca
-// làm việc kết thúc vào NGÀY HÔM SAU. Trước đây cả start lẫn end đều gán
-// chung dateStr nên tạo ra sự kiện có end < start, ca đêm không lên lịch
-// đúng. Giờ tự động cộng thêm 1 ngày cho phần NGÀY của thời điểm kết thúc.
+// FIX CA ĐÊM: nếu giờ kết thúc <= giờ bắt đầu (VD 21:30 -> 07:30) thì ca
+// làm việc kết thúc vào NGÀY HÔM SAU — tự động cộng thêm 1 ngày cho phần
+// NGÀY của thời điểm kết thúc.
+//
+// FIX DOUBLE EVENT: hàm này KHÔNG còn tự bọc try/catch quanh bước xoá + tạo
+// mới nữa. Nếu deleteCalendarEventsByProps() ném lỗi (xoá thất bại), hàm này
+// sẽ NÉM LỖI ĐÓ RA NGOÀI NGAY, dừng lại TRƯỚC khi kịp gọi events.insert() —
+// tức là thà "chưa đồng bộ được ngày này" còn hơn "tạo sự kiện trùng lặp".
+// Nơi gọi (schedule.js) sẽ bắt lỗi này, báo rõ cho người dùng ngày nào bị
+// lỗi, và không đánh dấu ngày đó là đã đồng bộ thành công.
 window.syncCalendarEvent = async function (dateStr, dayData, shiftTime, description) {
     if (!AppState.isLoggedIn || !gapi.client) return;
 
@@ -692,15 +682,11 @@ window.syncCalendarEvent = async function (dateStr, dayData, shiftTime, descript
         extendedProperties: { private: { gportalType: 'work' } }
     };
 
-    try {
-        await gapi.client.calendar.events.insert({
-            calendarId: calendarId,
-            resource: event
-        });
-        console.log(`Đã đồng bộ Lịch ngày ${dateStr} thành công.`);
-    } catch (err) {
-        console.error("Lỗi đồng bộ Lịch: ", err);
-    }
+    await withGoogleApiRetry(() => gapi.client.calendar.events.insert({
+        calendarId: calendarId,
+        resource: event
+    }), { label: `Tạo sự kiện Lịch ngày ${dateStr}` });
+    console.log(`Đã đồng bộ Lịch ngày ${dateStr} thành công.`);
 };
 
 window.deleteWorkCalendarEvent = async function (dateStr) {
@@ -714,12 +700,12 @@ function buildOtEventTitle(dayData) {
 }
 window.buildOtEventTitle = buildOtEventTitle;
 
+// Cùng nguyên tắc chống double như syncCalendarEvent(): không nuốt lỗi, nếu
+// xoá sự kiện OT cũ thất bại thì DỪNG LẠI, không tạo sự kiện OT mới.
 window.syncOtCalendarEvent = async function (dateStr, dayData, otShiftTime, description) {
     if (!AppState.isLoggedIn || !gapi.client) return;
     if (!otShiftTime) return;
 
-    // MỚI: sự kiện OT giờ được đẩy vào Lịch OT riêng (getConfiguredCalendarId('ot')),
-    // KHÔNG còn dùng chung Lịch làm việc chính như trước.
     const calendarId = getConfiguredCalendarId('ot');
     await deleteCalendarEventsByProps(dateStr, calendarId, { gportalType: 'work-ot' });
 
@@ -747,20 +733,15 @@ window.syncOtCalendarEvent = async function (dateStr, dayData, otShiftTime, desc
         extendedProperties: { private: { gportalType: 'work-ot' } }
     };
 
-    try {
-        await gapi.client.calendar.events.insert({
-            calendarId: calendarId,
-            resource: event
-        });
-        console.log(`Đã đồng bộ sự kiện Tăng cường (OT) ngày ${dateStr} thành công vào Lịch OT riêng.`);
-    } catch (err) {
-        console.error("Lỗi đồng bộ sự kiện OT: ", err);
-    }
+    await withGoogleApiRetry(() => gapi.client.calendar.events.insert({
+        calendarId: calendarId,
+        resource: event
+    }), { label: `Tạo sự kiện OT ngày ${dateStr}` });
+    console.log(`Đã đồng bộ sự kiện Tăng cường (OT) ngày ${dateStr} thành công vào Lịch OT riêng.`);
 };
 
 window.deleteOtCalendarEvent = async function (dateStr) {
     if (!AppState.isLoggedIn || !gapi.client) return;
-    // MỚI: xoá đúng trên Lịch OT riêng.
     await deleteCalendarEventsByProps(dateStr, getConfiguredCalendarId('ot'), { gportalType: 'work-ot' });
 };
 
@@ -799,12 +780,8 @@ window.syncMeetingCalendarEvent = async function (meeting) {
         extendedProperties: { private: { gportalType: 'meeting', gportalMeetingId: meeting.id } }
     };
 
-    try {
-        await gapi.client.calendar.events.insert({ calendarId, resource: event });
-        console.log(`Đã đồng bộ lịch họp ${meeting.id}.`);
-    } catch (err) {
-        console.error('Lỗi đồng bộ lịch họp:', err);
-    }
+    await withGoogleApiRetry(() => gapi.client.calendar.events.insert({ calendarId, resource: event }), { label: `Tạo lịch họp ${meeting.id}` });
+    console.log(`Đã đồng bộ lịch họp ${meeting.id}.`);
 };
 
 // ---------- TASK PCCV ----------
@@ -812,7 +789,7 @@ async function findGoogleTasksInRange(dueMin, dueMax) {
     let items = [];
     let pageToken;
     do {
-        const listRes = await gapi.client.tasks.tasks.list({
+        const listRes = await withGoogleApiRetry(() => gapi.client.tasks.tasks.list({
             tasklist: '@default',
             showCompleted: false,
             showHidden: false,
@@ -820,7 +797,7 @@ async function findGoogleTasksInRange(dueMin, dueMax) {
             dueMax: dueMax,
             maxResults: 100,
             pageToken: pageToken
-        });
+        }), { label: 'Tìm Google Tasks theo khoảng ngày' });
         items = items.concat(listRes.result.items || []);
         pageToken = listRes.result.nextPageToken;
     } while (pageToken);
@@ -837,18 +814,10 @@ async function findGoogleTaskByDate(dateKey) {
 /**
  * Đồng bộ (bổ sung hoặc cập nhật) 1 Google Task cho ngày dateKey.
  *
- * SỬA LỖI "PCCV KHÔNG LÊN GOOGLE TASKS": trước đây hàm này tự bắt lỗi bên
- * trong (try/catch) rồi chỉ console.error(), không cho nơi gọi biết là đã
- * thất bại -> nơi gọi (schedule.js) tưởng đã xong. Nay:
- *  1) Kiểm tra rõ ràng gapi.client.tasks có tồn tại không trước khi gọi API
- *     — nếu không, log cảnh báo cụ thể (thường do Google Tasks API chưa
- *     được bật trong Google Cloud Console) rồi NÉM LỖI ra ngoài.
- *  2) Nếu gọi API thất bại (403/404/500...), NÉM LẠI lỗi đó (kèm nguyên vẹn
- *     err.result.error từ Google để nơi gọi hiển thị đúng mã lỗi + thông
- *     điệp) thay vì nuốt âm thầm.
- * Nơi gọi (syncScheduleDayToGoogle trong schedule.js) sẽ bắt lỗi này riêng,
- * không để nó làm hỏng phần đồng bộ Lịch đã thành công, đồng thời hiển thị
- * rõ cho người dùng biết ngày nào bị lỗi và lỗi gì.
+ * Giữ nguyên nguyên tắc đã áp dụng từ trước: KHÔNG nuốt lỗi — nếu tìm Task
+ * cũ hoặc gọi API thất bại, ném lỗi ra ngoài để nơi gọi (schedule.js) biết
+ * và báo rõ cho người dùng, tránh tình trạng "chạy xong" một cách im lặng
+ * dù Task thực ra chưa lên/chưa cập nhật đúng.
  */
 window.syncGoogleTask = async function (dateKey, taskName, notes) {
     if (!AppState.isLoggedIn) return;
@@ -865,16 +834,16 @@ window.syncGoogleTask = async function (dateKey, taskName, notes) {
         const taskBody = { title: taskName, notes: notes || '', due: dueISO };
 
         if (existing) {
-            await gapi.client.tasks.tasks.update({
+            await withGoogleApiRetry(() => gapi.client.tasks.tasks.update({
                 tasklist: '@default',
                 task: existing.id,
                 resource: { ...taskBody, id: existing.id }
-            });
+            }), { label: `Cập nhật Task ngày ${dateKey}` });
         } else {
-            await gapi.client.tasks.tasks.insert({
+            await withGoogleApiRetry(() => gapi.client.tasks.tasks.insert({
                 tasklist: '@default',
                 resource: taskBody
-            });
+            }), { label: `Tạo Task ngày ${dateKey}` });
         }
         console.log(`Đã đồng bộ Task PCCV ngày ${dateKey}.`);
     } catch (err) {
@@ -890,7 +859,7 @@ window.deleteGoogleTask = async function (dateKey) {
     try {
         const existing = await findGoogleTaskByDate(dateKey);
         if (existing) {
-            await gapi.client.tasks.tasks.delete({ tasklist: '@default', task: existing.id });
+            await withGoogleApiRetry(() => gapi.client.tasks.tasks.delete({ tasklist: '@default', task: existing.id }), { label: `Xoá Task ngày ${dateKey}` });
             console.log(`Đã xoá Task PCCV ngày ${dateKey}.`);
         }
     } catch (err) {
@@ -988,8 +957,6 @@ window.reconcileMonthWithGoogle = async function (monthDate) {
         };
     });
 
-    // MỚI: đọc sự kiện OT từ Lịch OT riêng (otCalendarId) thay vì Lịch làm
-    // việc chính như trước, cho khớp với nơi syncOtCalendarEvent() đang ghi.
     const otEvents = await findEventsByExtendedPropsInRange(timeMin, timeMax, otCalendarId, { gportalType: 'work-ot' });
     otEvents.forEach(ev => {
         const dateKey = eventDateKey(ev);
@@ -1097,6 +1064,88 @@ window.reconcileMonthWithGoogle = async function (monthDate) {
     return { changed: changedSchedule || changedMeeting, changedSchedule, changedMeeting };
 };
 
+// ========================================================
+// MỚI: DỌN DẸP EVENT/TASK ĐÃ LỠ BỊ TẠO TRÙNG LẶP TỪ TRƯỚC KHI CÓ BẢN VÁ NÀY
+// ========================================================
+// Vì bản vá ở trên chỉ NGĂN lỗi double phát sinh MỚI, các Event/Task đã lỡ
+// bị tạo trùng lặp trong quá khứ (do bug cũ) vẫn còn nằm nguyên trên Google.
+// Hàm này quét toàn bộ Event (Lịch chính + Lịch OT + Lịch họp) và Task PCCV
+// trong 1 tháng, gom nhóm theo "cùng ngày + cùng loại" (Event) hoặc
+// "cùng ngày due" (Task); nếu 1 nhóm có nhiều hơn 1 mục, GIỮ LẠI mục có thời
+// điểm cập nhật (updated) MỚI NHẤT và xoá các mục còn lại.
+window.cleanupDuplicateGoogleData = async function (monthDate) {
+    if (!AppState.isLoggedIn || !gapi.client) {
+        return { removedEvents: 0, removedTasks: 0 };
+    }
+
+    const { firstKey, lastKey, timeMin, timeMax } = getMonthRangeISO(monthDate);
+    const workCalendarId = getConfiguredCalendarId('work');
+    const otCalendarId = getConfiguredCalendarId('ot');
+    const meetingCalendarId = getConfiguredCalendarId('meeting');
+
+    let removedEvents = 0;
+    let removedTasks = 0;
+
+    async function cleanupEventGroup(calendarId, propFilters, groupKeyFn) {
+        const events = await findEventsByExtendedPropsInRange(timeMin, timeMax, calendarId, propFilters);
+        const groups = {};
+        events.forEach(ev => {
+            const key = groupKeyFn(ev);
+            if (!key) return;
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(ev);
+        });
+
+        for (const key of Object.keys(groups)) {
+            const group = groups[key];
+            if (group.length <= 1) continue;
+            // Giữ lại bản có "updated" mới nhất (thường là bản đúng/mới nhất),
+            // xoá các bản còn lại.
+            group.sort((a, b) => new Date(b.updated || 0) - new Date(a.updated || 0));
+            const toRemove = group.slice(1);
+            for (const ev of toRemove) {
+                await withGoogleApiRetry(() => gapi.client.calendar.events.delete({ calendarId, eventId: ev.id }), { label: 'Dọn dẹp Event trùng lặp' });
+                removedEvents++;
+                await window.gportalSleep(80);
+            }
+        }
+    }
+
+    await cleanupEventGroup(workCalendarId, { gportalType: 'work' }, ev => eventDateKey(ev));
+    await cleanupEventGroup(otCalendarId, { gportalType: 'work-ot' }, ev => eventDateKey(ev));
+    await cleanupEventGroup(meetingCalendarId, { gportalType: 'meeting' }, ev => {
+        const meetingId = ev.extendedProperties && ev.extendedProperties.private ? ev.extendedProperties.private.gportalMeetingId : null;
+        return meetingId; // gom theo đúng 1 lịch họp (id) — họp khác ngày khác id nên không lẫn nhau
+    });
+
+    if (gapi.client.tasks) {
+        const dueMin = `${firstKey}T00:00:00.000Z`;
+        const dueMax = `${lastKey}T23:59:59.999Z`;
+        const tasks = await findGoogleTasksInRange(dueMin, dueMax);
+        const taskGroups = {};
+        tasks.forEach(t => {
+            if (!t.due) return;
+            const dateKey = t.due.substring(0, 10);
+            if (!taskGroups[dateKey]) taskGroups[dateKey] = [];
+            taskGroups[dateKey].push(t);
+        });
+
+        for (const dateKey of Object.keys(taskGroups)) {
+            const group = taskGroups[dateKey];
+            if (group.length <= 1) continue;
+            group.sort((a, b) => new Date(b.updated || 0) - new Date(a.updated || 0));
+            const toRemove = group.slice(1);
+            for (const t of toRemove) {
+                await withGoogleApiRetry(() => gapi.client.tasks.tasks.delete({ tasklist: '@default', task: t.id }), { label: 'Dọn dẹp Task trùng lặp' });
+                removedTasks++;
+                await window.gportalSleep(80);
+            }
+        }
+    }
+
+    return { removedEvents, removedTasks };
+};
+
 // LƯU Ý QUAN TRỌNG: KHÔNG được gán window.findGoogleTaskByDate bằng một hàm
 // "wrapper" gọi lại tên trần findGoogleTaskByDate(...) bên trong nó. Đây là
 // script thường (không phải module) nên "function findGoogleTaskByDate(...)"
@@ -1105,7 +1154,6 @@ window.reconcileMonthWithGoogle = async function (monthDate) {
 // trở đi tên trần findGoogleTaskByDate sẽ luôn trỏ về đúng cái wrapper (vì
 // việc phân giải tên trần tra cứu qua thuộc tính window tại THỜI ĐIỂM GỌI,
 // không phải tại thời điểm khai báo) -> wrapper tự gọi lại chính nó vô hạn
-// -> "Maximum call stack size exceeded". Đây chính là nguyên nhân lỗi tràn
-// stack khi đồng bộ Task PCCV. Cách sửa AN TOÀN: export thẳng tham chiếu tới
-// hàm gốc, không bọc thêm 1 lớp gọi lại tên trần.
+// -> "Maximum call stack size exceeded". Cách sửa AN TOÀN: export thẳng
+// tham chiếu tới hàm gốc, không bọc thêm 1 lớp gọi lại tên trần.
 window.findGoogleTaskByDate = findGoogleTaskByDate;
