@@ -2,54 +2,52 @@
  * googleSync.js - Google Auth + Drive + Calendar + Tasks
  *
  * ============================================================================
- * BẢN VÁ MỚI NHẤT (ƯU TIÊN CAO) — LỖI "TASK CỦA NGÀY CŨ TỰ NHIÊN BỊ TẠO
- * TRÙNG LẶP SAU KHI ĐỒNG BỘ TUẦN MỚI, DỌN DẸP TRÙNG LẶP KHÔNG CÓ TÁC DỤNG"
+ * BẢN VÁ MỚI NHẤT (ƯU TIÊN CAO) — VẪN CÒN "DOUBLE TASK" KHI LƯU TỪNG NGÀY +
+ * "DỌN DẸP TRÙNG LẶP" XÓA NHẦM TASK ĐÃ HOÀN TẤT
  * ============================================================================
- * TRIỆU CHỨNG: Những ngày cũ (VD 1/8 - 9/8) đã có Task PCCV và người dùng đã
- * tick HOÀN TẤT (complete) ngay trên ứng dụng Google Tasks. Sau đó chỉ cần
- * cập nhật/đồng bộ thêm lịch của TUẦN MỚI (không đụng gì tới các ngày cũ),
- * toàn bộ Task của các ngày cũ đó lại bị TẠO THÊM 1 BẢN MỚI (trùng lặp).
- * Bấm nút "Dọn dẹp trùng lặp" cũng hoàn toàn không có tác dụng.
+ * TRIỆU CHỨNG (báo cáo thực tế): Cập nhật Lịch (Event) trước, sau đó bổ sung
+ * Task PCCV cho cùng ngày đó -> Task vẫn bị tạo trùng lặp (1 bản đã hoàn tất/
+ * cũ + 1 bản mới trống). Bấm "Dọn dẹp trùng lặp" thì hệ thống lại xóa đúng
+ * bản Task đã hoàn tất (có ý nghĩa, đã được tick xong việc thật) và giữ lại
+ * bản trống (do lỗi tạo trùng trước đó) — ngược hoàn toàn với mong muốn.
  *
- * NGUYÊN NHÂN GỐC RỄ: Hàm findGoogleTasksInRange() — hàm lõi dùng để "tìm
- * xem 1 ngày đã có Task trên Google Tasks hay chưa" — trước đây luôn gọi
- * gapi.client.tasks.tasks.list() với:
- *      showCompleted: false,
- *      showHidden: false,
- * Nghĩa là API CỐ TÌNH KHÔNG TRẢ VỀ các Task đã được tick hoàn tất (và các
- * Task đã bị ẩn). Hàm này được dùng ở 3 nơi:
- *   1) findGoogleTaskByDate() -> syncGoogleTask() dùng để quyết định UPDATE
- *      Task cũ hay INSERT Task mới. Vì không "nhìn thấy" Task cũ đã hoàn
- *      tất, hệ thống tưởng nhầm "ngày này chưa có Task" -> tạo Task MỚI ->
- *      cùng 1 ngày giờ có 2 Task (1 cái cũ đã hoàn tất + 1 cái mới toanh).
- *      Vì "Đồng bộ Google" luôn quét lại TOÀN BỘ các ngày có trong
- *      monthlyScheduleData (kể cả ngày cũ, không chỉ ngày vừa sửa), nên chỉ
- *      cần bấm Đồng bộ sau khi thêm dữ liệu tuần mới là các ngày cũ đã hoàn
- *      tất cũng bị quét lại và dính lỗi này.
- *   2) cleanupDuplicateGoogleData() cũng DÙNG CHUNG findGoogleTasksInRange()
- *      để gom nhóm Task theo ngày rồi xoá bớt bản trùng. Vì hàm này cũng
- *      không "nhìn thấy" Task cũ đã hoàn tất, mỗi nhóm chỉ còn đúng 1 phần
- *      tử (Task mới) -> không có gì bị coi là "trùng" -> Dọn dẹp chạy xong
- *      báo "không phát hiện trùng lặp" dù thực tế vẫn còn 1 Task cũ ẩn đâu
- *      đó không được xét tới.
- *   3) reconcileMonthWithGoogle() (nút "Kiểm tra đồng bộ") cũng đọc thiếu
- *      Task đã hoàn tất, có thể khiến Portal hiểu sai là "ngày đó không còn
- *      PCCV" dù thực ra Task vẫn tồn tại (chỉ là đã hoàn tất).
+ * NGUYÊN NHÂN GỐC RỄ #1 (double khi lưu từng ngày):
+ * findGoogleTaskByDate() — hàm quyết định "ngày này đã có Task trên Google
+ * Tasks hay chưa" khi lưu 1 ngày qua syncGoogleTask() — trước đây dùng cửa
+ * sổ tìm kiếm ĐÚNG BẰNG 1 NGÀY:
+ *      dueMin = `${dateKey}T00:00:00.000Z`
+ *      dueMax = `${dateKey}T23:59:59.999Z`
+ * Task do chính hệ thống tạo cũng có due = `${dateKey}T00:00:00.000Z`, tức
+ * NẰM ĐÚNG TRÊN BIÊN dueMin. Trong thực tế, Google Tasks API xử lý biên
+ * dueMin/dueMax không ổn định với các Task đã hoàn tất/đã ẩn khi cửa sổ lọc
+ * quá sát biên — nhiều trường hợp Task cũ (đã hoàn tất) tồn tại thật trên
+ * Google nhưng lệnh tasks.list() với cửa sổ hẹp này không trả về. Hệ thống
+ * hiểu nhầm "ngày này chưa có Task" -> INSERT Task MỚI -> double, dù bước
+ * đồng bộ Lịch (Event) ngay trước đó không hề gặp lỗi gì.
+ * Lưu ý: reconcileMonthWithGoogle() và cleanupDuplicateGoogleData() vốn dùng
+ * cửa sổ CẢ THÁNG (rộng hơn nhiều) nên ít dính lỗi này hơn — đây là lý do
+ * "Kiểm tra đồng bộ" / "Dọn dẹp trùng lặp" thường nhìn thấy đúng Task, còn
+ * lưu từng ngày (saveDayEdit) lại hay bị sót.
  *
- * FIX ÁP DỤNG: Đổi showCompleted: false, showHidden: false thành
- * showCompleted: true, showHidden: true trong findGoogleTasksInRange(). Nhờ
- * vậy cả 3 luồng trên đều nhìn thấy ĐÚNG thực trạng Task trên Google (kể cả
- * đã hoàn tất/đã ẩn):
- *   - syncGoogleTask() sẽ UPDATE đúng Task cũ (giữ nguyên trạng thái hoàn
- *     tất/id) thay vì tạo Task mới -> hết phát sinh trùng lặp mới.
- *   - cleanupDuplicateGoogleData() sẽ gom đúng nhóm gồm cả Task cũ đã hoàn
- *     tất lẫn Task mới bị tạo trùng trước đó, xoá đúng bản dư thừa.
- *   - reconcileMonthWithGoogle() phản ánh đúng thực trạng Task (kể cả đã
- *     hoàn tất) về lại Portal.
- * LƯU Ý: gapi.client.tasks.tasks.update() theo tài liệu Google Tasks API hỗ
- * trợ patch semantics (chỉ ghi đè các field được truyền: title/notes/due),
- * không gửi kèm "status" nên trạng thái hoàn tất của Task cũ sẽ được giữ
- * nguyên, không bị "hồi sinh" thành chưa hoàn tất khi hệ thống update lại.
+ * FIX #1: findGoogleTaskByDate() giờ nới khoảng tìm kiếm ra thêm 1 ngày mỗi
+ * bên (từ 00:00 hôm TRƯỚC đến 23:59:59.999 hôm SAU), rồi lọc lại CHÍNH XÁC
+ * theo dateKey ở phía client (t.due.substring(0,10) === dateKey). Nhờ vậy
+ * tránh đúng cái biên hay gây lỗi phía Google, mà vẫn không thể nhận nhầm
+ * Task của ngày khác (vì đã lọc lại chính xác sau khi lấy về).
+ *
+ * NGUYÊN NHÂN GỐC RỄ #2 ("Dọn dẹp" xóa nhầm Task đã hoàn tất):
+ * Trong cleanupDuplicateGoogleData(), khi 1 nhóm Task trùng ngày có nhiều
+ * hơn 1 bản, code cũ CHỦ ĐỘNG ưu tiên giữ lại bản CHƯA hoàn tất:
+ *      const notCompleted = group.filter(t => t.status !== 'completed');
+ *      const preferredList = notCompleted.length > 0 ? notCompleted : group;
+ * Hậu quả: nếu nhóm trùng gồm 1 bản đã tick hoàn tất (dữ liệu thật, có ý
+ * nghĩa công việc đã xử lý xong) và 1 bản trống mới bị tạo lỗi (chưa hoàn
+ * tất), hệ thống luôn XÓA bản đã hoàn tất và GIỮ bản trống — làm mất lịch
+ * sử xử lý thật của người dùng.
+ *
+ * FIX #2: Bỏ hẳn việc ưu tiên theo trạng thái hoàn tất. Trong mỗi nhóm Task
+ * trùng, chỉ xét "updated" (thời điểm cập nhật gần nhất) để quyết định giữ
+ * lại — không thiên vị completed hay chưa completed nữa.
  * ============================================================================
  *
  * (Giữ nguyên toàn bộ các bản vá trước đó — xem chi tiết đầy đủ bên dưới:
@@ -59,7 +57,8 @@
  * cảnh báo file://, cấu hình Calendar ID từ Cài đặt, xác định sự kiện
  * G-Portal qua extendedProperties.private, lấy hồ sơ Google dùng chung toàn
  * app, giữ đăng nhập qua silent SSO, tách lịch OT riêng, đồng bộ ngược
- * "Kiểm tra đồng bộ", fix đệ quy vô hạn findGoogleTaskByDate...)
+ * "Kiểm tra đồng bộ", fix đệ quy vô hạn findGoogleTaskByDate, và bản vá
+ * showCompleted/showHidden = true cho toàn bộ truy vấn Task...)
  * ============================================================================
  *
  * ============================================================================
@@ -827,14 +826,8 @@ window.syncMeetingCalendarEvent = async function (meeting) {
 };
 
 // ---------- TASK PCCV ----------
-// FIX MỚI (xem ghi chú đầu file): showCompleted/showHidden ĐỔI THÀNH true.
-// Trước đây để false khiến hàm này "mù" trước các Task đã tick hoàn tất
-// hoặc đã bị ẩn trên Google Tasks, gây ra 2 hậu quả nghiêm trọng:
-//   1) syncGoogleTask() tưởng nhầm "chưa có Task" -> tạo Task MỚI dù đã có
-//      Task cũ (đã hoàn tất) cho cùng ngày đó -> TRÙNG LẶP.
-//   2) cleanupDuplicateGoogleData() cũng không nhìn thấy Task cũ đã hoàn tất
-//      -> không gom được nhóm trùng lặp -> bấm "Dọn dẹp" không có tác dụng.
-// Để true giúp cả 2 luồng trên nhìn thấy ĐÚNG và ĐỦ toàn bộ Task hiện có.
+// showCompleted/showHidden = true để không "mù" trước các Task đã tick hoàn
+// tất hoặc đã bị ẩn trên Google Tasks (xem ghi chú đầu file).
 async function findGoogleTasksInRange(dueMin, dueMax) {
     let items = [];
     let pageToken;
@@ -854,9 +847,24 @@ async function findGoogleTasksInRange(dueMin, dueMax) {
     return items;
 }
 
+/**
+ * FIX MỚI (xem ghi chú đầu file, mục "NGUYÊN NHÂN GỐC RỄ #1"): trước đây
+ * hàm này tìm Task cũ bằng cửa sổ ĐÚNG BẰNG 1 NGÀY (dueMin = dueMax = đúng
+ * giá trị "due" mà hệ thống từng ghi khi tạo Task cho ngày này) — tức nằm
+ * SÁT BIÊN dueMin. Với các Task đã hoàn tất/đã ẩn, việc lọc dueMin/dueMax
+ * của Google Tasks API không ổn định ở đúng biên này, khiến Task cũ có
+ * thật nhưng không được trả về -> hệ thống tạo Task MỚI -> double.
+ *
+ * Cách sửa: NỚI RỘNG cửa sổ tìm kiếm ra 1 ngày mỗi bên (hôm trước 00:00 ->
+ * hôm sau 23:59:59.999), rồi LỌC LẠI CHÍNH XÁC theo đúng dateKey ở phía
+ * client. Nới cửa sổ tránh được lỗi biên phía Google, còn lọc lại chính xác
+ * đảm bảo không bao giờ nhận nhầm Task của ngày liền kề.
+ */
 async function findGoogleTaskByDate(dateKey) {
-    const dueMin = `${dateKey}T00:00:00.000Z`;
-    const dueMax = `${dateKey}T23:59:59.999Z`;
+    const prevDayKey = addDaysToDateKey(dateKey, -1);
+    const nextDayKey = addDaysToDateKey(dateKey, 1);
+    const dueMin = `${prevDayKey}T00:00:00.000Z`;
+    const dueMax = `${nextDayKey}T23:59:59.999Z`;
     const items = await findGoogleTasksInRange(dueMin, dueMax);
     return items.find(t => t.due && t.due.substring(0, 10) === dateKey);
 }
@@ -869,12 +877,12 @@ async function findGoogleTaskByDate(dateKey) {
  * và báo rõ cho người dùng, tránh tình trạng "chạy xong" một cách im lặng
  * dù Task thực ra chưa lên/chưa cập nhật đúng.
  *
- * Nhờ findGoogleTaskByDate() giờ nhìn thấy cả Task đã hoàn tất/đã ẩn, bước
- * "existing" bên dưới sẽ tìm đúng Task cũ (nếu có) để UPDATE — kể cả khi
- * Task đó đã được người dùng tick hoàn tất trên Google Tasks — thay vì tạo
- * thêm 1 Task mới chồng lên. gapi.client.tasks.tasks.update() hỗ trợ patch
- * semantics (chỉ áp field được truyền: title/notes/due), nên KHÔNG làm mất
- * trạng thái hoàn tất đã có của Task.
+ * Nhờ findGoogleTaskByDate() giờ nới rộng cửa sổ tìm kiếm và nhìn thấy cả
+ * Task đã hoàn tất/đã ẩn, bước "existing" bên dưới sẽ tìm đúng Task cũ (nếu
+ * có) để UPDATE — kể cả khi Task đó đã được người dùng tick hoàn tất trên
+ * Google Tasks — thay vì tạo thêm 1 Task mới chồng lên. gapi.client.tasks
+ * .tasks.update() hỗ trợ patch semantics (chỉ áp field được truyền:
+ * title/notes/due), nên KHÔNG làm mất trạng thái hoàn tất đã có của Task.
  */
 window.syncGoogleTask = async function (dateKey, taskName, notes) {
     if (!AppState.isLoggedIn) return;
@@ -1127,12 +1135,17 @@ window.reconcileMonthWithGoogle = async function (monthDate) {
 // Quét toàn bộ Event (Lịch chính + Lịch OT + Lịch họp) và Task PCCV trong 1
 // tháng, gom nhóm theo "cùng ngày + cùng loại" (Event) hoặc "cùng ngày due"
 // (Task); nếu 1 nhóm có nhiều hơn 1 mục, GIỮ LẠI mục có thời điểm cập nhật
-// (updated) MỚI NHẤT và xoá các mục còn lại. Nhờ findGoogleTasksInRange() ở
-// trên giờ đã bật showCompleted/showHidden, bước gom nhóm Task này giờ nhìn
-// thấy ĐẦY ĐỦ cả Task đã hoàn tất lẫn Task mới bị tạo trùng trước đó, nên
-// mới thật sự dọn sạch được — trước đây do "mù" trước Task đã hoàn tất nên
-// mỗi nhóm chỉ có 1 phần tử (Task mới), khiến nút này chạy xong nhưng không
-// xoá được gì.
+// (updated) MỚI NHẤT và xoá các mục còn lại.
+//
+// FIX MỚI (xem ghi chú đầu file, mục "NGUYÊN NHÂN GỐC RỄ #2"): trước đây,
+// khi gom nhóm Task trùng, hàm này CHỦ ĐỘNG ưu tiên giữ lại Task CHƯA hoàn
+// tất (loại bỏ Task đã hoàn tất khỏi danh sách ứng viên được giữ nếu còn ít
+// nhất 1 Task chưa hoàn tất trong nhóm). Hậu quả: Task đã hoàn tất (dữ liệu
+// thật, có ý nghĩa) bị XOÁ, còn Task trống do lỗi tạo trùng lại được GIỮ —
+// ngược hoàn toàn với ý muốn của người dùng, gây mất lịch sử xử lý.
+// Nay đã bỏ hẳn việc thiên vị theo trạng thái hoàn tất: chỉ còn xét đúng 1
+// tiêu chí duy nhất là "updated" mới nhất trong toàn bộ nhóm, bất kể Task đó
+// đã hoàn tất hay chưa.
 window.cleanupDuplicateGoogleData = async function (monthDate) {
     if (!AppState.isLoggedIn || !gapi.client) {
         return { removedEvents: 0, removedTasks: 0 };
@@ -1193,14 +1206,11 @@ window.cleanupDuplicateGoogleData = async function (monthDate) {
         for (const dateKey of Object.keys(taskGroups)) {
             const group = taskGroups[dateKey];
             if (group.length <= 1) continue;
-            // Ưu tiên giữ lại Task CHƯA hoàn tất có "updated" mới nhất (nếu có),
-            // vì đó thường là bản đang được Portal dùng/theo dõi. Nếu tất cả đều
-            // đã hoàn tất hoặc tất cả đều chưa hoàn tất thì chỉ xét theo
-            // "updated" mới nhất như trước.
-            const notCompleted = group.filter(t => t.status !== 'completed');
-            const preferredList = notCompleted.length > 0 ? notCompleted : group;
-            preferredList.sort((a, b) => new Date(b.updated || 0) - new Date(a.updated || 0));
-            const keepId = preferredList[0].id;
+            // KHÔNG còn thiên vị theo trạng thái hoàn tất (status). Chỉ xét
+            // "updated" mới nhất trong TOÀN BỘ nhóm để chọn bản giữ lại — nhờ
+            // vậy Task đã hoàn tất không còn bị xoá oan chỉ vì nó "đã xong".
+            group.sort((a, b) => new Date(b.updated || 0) - new Date(a.updated || 0));
+            const keepId = group[0].id;
             const toRemove = group.filter(t => t.id !== keepId);
             for (const t of toRemove) {
                 await withGoogleApiRetry(() => gapi.client.tasks.tasks.delete({ tasklist: '@default', task: t.id }), { label: 'Dọn dẹp Task trùng lặp' });
