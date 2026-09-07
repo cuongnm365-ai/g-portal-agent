@@ -345,12 +345,24 @@
                                         </div>
                                         <div id="emailHeaders" class="hidden">
                                             <div id="ccDisplay" class="mail-meta-row hidden">
-                                                <span class="mail-meta-label font-mono">CC</span>
-                                                <span id="ccValue" class="font-mono text-xs" style="color: var(--text-main);"></span>
+                                                <span class="mail-meta-label font-mono" style="padding-top: 2px;">CC</span>
+                                                <div class="flex-1 min-w-0">
+                                                    <span id="ccValue" class="font-mono text-xs block" style="color: var(--text-main);"></span>
+                                                    <p class="cc-bcc-note">
+                                                        <i class="fa-solid fa-circle-exclamation mr-0.5"></i>
+                                                        Vui lòng kiểm tra lại danh sách email, bổ sung nếu còn thiếu hoặc liên hệ <b>Admin</b> để cập nhật.
+                                                    </p>
+                                                </div>
                                             </div>
                                             <div id="bccDisplay" class="mail-meta-row hidden">
-                                                <span class="mail-meta-label font-mono">BCC</span>
-                                                <span id="bccValue" class="font-mono text-xs" style="color: var(--text-main);"></span>
+                                                <span class="mail-meta-label font-mono" style="padding-top: 2px;">BCC</span>
+                                                <div class="flex-1 min-w-0">
+                                                    <span id="bccValue" class="font-mono text-xs block" style="color: var(--text-main);"></span>
+                                                    <p class="cc-bcc-note">
+                                                        <i class="fa-solid fa-circle-exclamation mr-0.5"></i>
+                                                        Vui lòng kiểm tra lại danh sách email, bổ sung nếu còn thiếu hoặc liên hệ <b>Admin</b> để cập nhật.
+                                                    </p>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -452,7 +464,7 @@
 
                                                 <div class="ai-card span-2" style="margin-top: 6px; padding-bottom: 8px;">
                             <h3 style="margin-bottom: 4px;"><i class='bx bx-envelope'></i> Cấu hình module Soạn Email</h3>
-                            <p style="font-size:12.5px; color: var(--text-muted); margin-bottom: 18px;">Áp dụng cho toàn bộ mẫu email ở mục "Soạn Email" — nhận diện Vùng miền để tự gắn CC, và địa chỉ BCC mặc định.</p>
+                            <p style="font-size:12.5px; color: var(--text-muted); margin-bottom: 18px;">Áp dụng cho toàn bộ mẫu email ở mục "Soạn Email" — nhận diện Vùng miền (7 khu vực) để tự gắn CC, và địa chỉ BCC mặc định.</p>
 
                             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                 <div class="settings-card">
@@ -466,41 +478,22 @@
                                     <input type="email" id="settingsBccEmail" class="soc-input w-full mb-3" placeholder="Đang nạp dữ liệu...">
                                 </div>
 
-                                <div class="settings-card">
-                                    <div class="flex items-center gap-3 mb-4">
-                                        <div class="settings-icon" style="background: var(--accent-glow); color: var(--success);">
-                                            <i class="fa-solid fa-location-dot"></i>
-                                        </div>
-                                        <h3 style="font-weight:700; font-size:15px; color: var(--text-main);">Miền Nam</h3>
-                                    </div>
-                                    <label class="soc-label">Email Miền Nam:</label>
-                                    <input type="text" id="settingsSouthEmail" class="soc-input w-full mb-4" placeholder="Đang nạp dữ liệu...">
-                                    <label class="soc-label">Ký tự nhận diện:</label>
-                                    <input type="text" id="settingsSouthPatterns" class="soc-input w-full font-mono" placeholder="Đang nạp dữ liệu...">
-                                </div>
-
-                                <div class="settings-card">
-                                    <div class="flex items-center gap-3 mb-4">
-                                        <div class="settings-icon" style="background: var(--accent-glow); color: var(--accent);">
-                                            <i class="fa-solid fa-location-dot"></i>
-                                        </div>
-                                        <h3 style="font-weight:700; font-size:15px; color: var(--text-main);">Miền Bắc</h3>
-                                    </div>
-                                    <label class="soc-label">Email Miền Bắc:</label>
-                                    <input type="text" id="settingsNorthEmail" class="soc-input w-full mb-4" placeholder="Đang nạp dữ liệu...">
-                                    <label class="soc-label">Ký tự nhận diện:</label>
-                                    <input type="text" id="settingsNorthPatterns" class="soc-input w-full font-mono" placeholder="Đang nạp dữ liệu...">
-                                </div>
-
-                                <div class="settings-card" style="background: rgba(56,189,248,0.08); border-color: rgba(56,189,248,0.25);">
+                                <div class="settings-card" style="background: var(--accent-glow); border-color: var(--accent-glow);">
                                     <div class="flex items-start gap-3">
                                         <i class="fa-solid fa-lightbulb text-2xl mt-1" style="color: var(--accent);"></i>
                                         <div>
                                             <h4 style="font-weight:700; margin-bottom:8px; color: var(--text-main);">Nhận diện Tự động</h4>
-                                            <p style="font-size:13px; color: var(--text-muted);">Hệ thống sẽ tự động nhận diện vùng miền dựa trên 2 ký tự đầu của số hợp đồng khi soạn email.</p>
+                                            <p style="font-size:13px; color: var(--text-muted);">Hệ thống sẽ tự động nhận diện vùng miền dựa trên 2-3 ký tự đầu của số hợp đồng khi soạn email (7 khu vực bên dưới).</p>
                                         </div>
                                     </div>
                                 </div>
+
+                                <!-- Các thẻ Email theo từng vùng miền (7 khu vực) được
+                                     js/modules/email-tool/settings-panel.js tự động sinh ra tại
+                                     đây, dựa theo regionManager.regionDefs trong
+                                     js/modules/email-tool/region-detector.js. Không cần sửa HTML
+                                     khi thêm/bớt vùng miền. -->
+                                <div id="emailRegionGrid" class="contents"></div>
                             </div>
 
                             <div id="emailSettingsLockNotice" class="mt-5 p-5 bg-amber-50 border border-amber-200 text-amber-900 text-sm rounded-xl shadow-sm"></div>

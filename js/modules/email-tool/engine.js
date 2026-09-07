@@ -5,6 +5,32 @@
      của bản cũ, file JS/google-auth.js đã bị loại bỏ). Tên Agent mặc định
      và thông tin gửi kèm thống kê giờ lấy từ AppState.userProfile — hồ sơ
      Google DUY NHẤT dùng chung cho toàn bộ G-Portal (xem js/core/googleSync.js).
+
+   ĐỒNG BỘ TÍNH NĂNG MỚI NHẤT TỪ REPO GỐC (email-template-tool):
+   1) BADGE NHẬN DIỆN KHU VỰC: hiển thị ngay dưới ô Số hợp đồng
+      (field_contractId) — khi nhân viên gõ số hợp đồng, hệ thống tự động
+      nhận diện và hiển thị nổi bật tên khu vực (dùng chung logic
+      detectRegion với phần tính CC trong displayEmailHeaders(), nên badge
+      hiện khu vực nào thì CC cũng lấy đúng email khu vực đó). Badge nằm
+      trong LUỒNG BÌNH THƯỜNG (không absolute) nên tự động đẩy nội dung phía
+      dưới xuống khi xuất hiện, không cần tính trước khoảng cách. Nếu KHÔNG
+      nhận diện được khu vực, badge chuyển sang trạng thái cảnh báo nổi bật
+      (nền đỏ đậm, chữ to hơn, nhấp nháy nhẹ — class .region-indicator-warning
+      trong css/email-tool.css) để nhân viên dễ chú ý và kiểm tra lại Số hợp
+      đồng. Hàng chứa ô Số hợp đồng được canh đỉnh (items-start) thay vì canh
+      đáy, để 3 ô cùng hàng (VD Số hợp đồng/SĐT/Địa chỉ) luôn ngang nhau ở
+      phía trên bất kể badge có hiện hay không.
+   2) FIX GÕ TIẾNG VIỆT BẰNG BỘ GÕ IME (fcitx5, Unikey...): trước đây code
+      chỉnh sửa value của ô input ngay tại từng ký tự gõ (kể cả khi IME đang
+      ghép chữ), phá vỡ bộ đệm ghép chữ của IME, gây nhảy chữ/mất chữ với
+      các ô có định dạng tự động (viết hoa, viết hoa đầu từ). Cách fix: theo
+      dõi compositionstart/compositionend, tạm ngưng tự động định dạng trong
+      lúc IME đang ghép chữ, chỉ áp dụng định dạng sau khi ghép chữ xong.
+   3) FIX LỖI NỘI DUNG EMAIL BỊ ĐẨY RA GIỮA khi soạn trên Thunderbird (cửa sổ
+      soạn thư rộng > 800px): khối bọc nội dung trước đây dùng
+      "margin: 0 auto" (tự động canh giữa) — đổi thành "margin: 0" để nội
+      dung luôn bắt đầu từ mép trái, đồng nhất trên cả Webmail lẫn
+      Thunderbird.
    - Toàn bộ phần còn lại (render form động, sinh nội dung email theo mẫu,
      format tiền tệ, DOMPurify, tracking Google Analytics, copy nội dung,
      CC/BCC theo vùng miền...) giữ nguyên logic gốc.
@@ -89,6 +115,17 @@ function getFieldHtml(field) {
         extraHtml = `<div id="phone_error" style="display: none; color: #dc2626; font-size: 12px; margin-top: 4px; font-weight: 500;">Sai định dạng số ĐT</div>`;
     }
 
+    // Badge nhận diện khu vực nằm trong LUỒNG BÌNH THƯỜNG (không absolute) —
+    // tự động đẩy nội dung phía dưới xuống khi xuất hiện, không cần tính
+    // trước khoảng cách. Là 1 khối (div) chứ không phải viên thuốc 1 dòng, để
+    // chữ dài (thông báo cảnh báo) tự xuống dòng gọn trong bề rộng cột, không
+    // tràn ra ngoài hay đè lên nội dung khác.
+    if (field.id === "contractId") {
+        extraHtml += `<div id="regionIndicator" class="hidden mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-bold whitespace-nowrap" style="border: 1px solid transparent; font-size: 11px;">
+            <i class="fa-solid fa-location-dot"></i><span id="regionIndicatorText"></span>
+        </div>`;
+    }
+
     if (field.type === "textarea") {
         return `<textarea id="field_${field.id}" rows="4" class="soc-input template-input w-full" ${formatAttr} placeholder="${field.placeholder || ''}"></textarea>${extraHtml}`;
     } else if (field.type === "select") {
@@ -102,6 +139,45 @@ function getFieldHtml(field) {
     } else {
         return `<input type="text" id="field_${field.id}" class="soc-input template-input w-full" ${formatAttr} placeholder="${field.placeholder || ''}">${extraHtml}`;
     }
+}
+
+// Cập nhật Badge nhận diện khu vực. Được gọi mỗi khi nội dung ô Số hợp đồng
+// (field_contractId) thay đổi. Dùng chung logic detectRegion với phần tính
+// CC trong displayEmailHeaders() để đảm bảo luôn đồng bộ: badge hiện khu vực
+// nào thì CC cũng sẽ lấy đúng email của khu vực đó. Trạng thái "không nhận
+// diện được" nổi bật rõ rệt: nền đỏ đậm, chữ trắng to hơn, nhấp nháy nhẹ
+// (class .region-indicator-warning trong css/email-tool.css).
+function updateRegionIndicator(contractId) {
+    const indicator = document.getElementById("regionIndicator");
+    const textEl = document.getElementById("regionIndicatorText");
+    if (!indicator || !textEl || typeof regionManager === "undefined") return;
+
+    const value = (contractId || "").trim();
+
+    if (!value) {
+        indicator.classList.add("hidden");
+        indicator.classList.remove("region-indicator-warning");
+        return;
+    }
+
+    const region = regionManager.detectRegion(value);
+
+    if (region) {
+        textEl.textContent = `Khu vực: ${regionManager.getRegionLabel(region)}`;
+        indicator.classList.remove("region-indicator-warning");
+        indicator.style.background = "var(--success-soft)";
+        indicator.style.color = "var(--success)";
+        indicator.style.borderColor = "var(--success-soft)";
+        indicator.style.fontSize = "11px";
+    } else {
+        textEl.textContent = "⚠ Không nhận diện được khu vực – kiểm tra lại Số hợp đồng!";
+        indicator.classList.add("region-indicator-warning");
+        indicator.style.background = "#DC2626";
+        indicator.style.color = "#FFFFFF";
+        indicator.style.borderColor = "#DC2626";
+        indicator.style.fontSize = "12.5px";
+    }
+    indicator.classList.remove("hidden");
 }
 
 function renderForm(templateId) {
@@ -150,7 +226,15 @@ function renderForm(templateId) {
     if (template.fields) {
         template.fields.forEach(field => {
             if (field.type === "row") {
-                html += `<div class="flex gap-4 mb-4 items-end">`;
+                // Nếu hàng này có ô Số hợp đồng (có thể hiện badge khu vực bên
+                // dưới), canh đỉnh (items-start) thay vì canh đáy (items-end) —
+                // nhờ vậy nhãn + ô nhập của cả các cột cùng hàng luôn ngang
+                // nhau ở phía trên, không bị lệch dù cột Số hợp đồng có cao
+                // hơn do có thêm badge. Các hàng khác vẫn giữ items-end như cũ.
+                const rowHasContractId = field.fields.some(sub => sub.id === "contractId");
+                const rowAlignCls = rowHasContractId ? "items-start" : "items-end";
+
+                html += `<div class="flex gap-4 mb-4 ${rowAlignCls}">`;
                 field.fields.forEach(sub => {
                     let wCls = sub.width || "flex-1";
                     html += `<div class="${wCls}">`;
@@ -167,6 +251,9 @@ function renderForm(templateId) {
                 });
                 html += `</div>`;
             } else {
+                // Field đứng riêng (không nằm trong "row") vốn đã ở dạng khối
+                // (div thường) — badge bên dưới tự động đẩy nội dung tiếp theo
+                // xuống mà không cần xử lý gì thêm.
                 html += `<div class="mb-4">`;
                 if (field.type !== "checkbox") {
                     html += `<label class="soc-label block mb-1">${field.label}:</label>`;
@@ -185,37 +272,81 @@ function renderForm(templateId) {
     formContainer.innerHTML = html;
 
     document.querySelectorAll('.template-input').forEach(input => {
+        // ---- FIX: Theo dõi trạng thái đang gõ chữ qua bộ gõ IME (fcitx5,
+        // Unikey...) ----
+        // Khi IME đang trong quá trình ghép chữ (composing) — ví dụ gõ "a" rồi
+        // "s" để ra chữ "á" — TUYỆT ĐỐI không được can thiệp/chỉnh sửa value
+        // của ô input, nếu không dấu tiếng Việt sẽ bị nhảy chữ, mất chữ hoặc
+        // sai thứ tự (do IME dùng bộ đệm ghép chữ riêng, việc ép value/di
+        // chuyển con trỏ giữa chừng sẽ phá vỡ bộ đệm này).
+        input.addEventListener('compositionstart', () => {
+            input.dataset.composing = "1";
+        });
+
+        input.addEventListener('compositionend', () => {
+            input.dataset.composing = "";
+            // Khi gõ xong 1 cụm từ (IME vừa ghép chữ xong), mới áp dụng định
+            // dạng (viết hoa / viết hoa đầu từ / tiền tệ) rồi cập nhật lại
+            // email preview.
+            applyFieldFormatAndRender(input);
+        });
+
         input.addEventListener('input', (e) => {
             if (e.target.id === "field_staffName") localStorage.setItem("soc_agent_name", e.target.value);
 
-            let formatAttr = e.target.getAttribute('data-format');
-            if (formatAttr === 'uppercase') {
-                let start = e.target.selectionStart;
-                let end = e.target.selectionEnd;
-                e.target.value = e.target.value.toUpperCase();
-                e.target.setSelectionRange(start, end);
-            } else if (formatAttr === 'titlecase') {
-                let start = e.target.selectionStart;
-                let end = e.target.selectionEnd;
-                e.target.value = e.target.value.toLowerCase().replace(/(?:^|\s)\S/g, function(a) { return a.toUpperCase(); });
-                e.target.setSelectionRange(start, end);
-            } else if (formatAttr === 'currency') {
-                let raw = e.target.value.replace(/[^\d]/g, '');
-                if (raw) {
-                    raw = String(parseInt(raw, 10));
-                    e.target.value = Number(raw).toLocaleString('vi-VN');
-                } else {
-                    e.target.value = '';
-                }
-                e.target.setSelectionRange(e.target.value.length, e.target.value.length);
+            // Nếu đang trong lúc IME ghép chữ thì bỏ qua bước định dạng ngay
+            // lúc này, chỉ cập nhật email preview với giá trị thô hiện có,
+            // tránh phá vỡ IME.
+            if (e.target.dataset.composing === "1") {
+                if (e.target.id === "field_contractId") updateRegionIndicator(e.target.value);
+                renderEmail();
+                return;
             }
-            renderEmail();
+
+            applyFieldFormatAndRender(e.target);
         });
 
-        if(input.tagName === 'SELECT') {
+        if (input.tagName === 'SELECT') {
             input.addEventListener('change', renderEmail);
         }
     });
+
+    // Khởi tạo trạng thái Badge khu vực ngay khi mở form (phòng trường hợp ô
+    // Số hợp đồng đã có sẵn giá trị từ trước, ví dụ sau khi bấm "Làm mới").
+    updateRegionIndicator(document.getElementById("field_contractId")?.value || "");
+
+    renderEmail();
+}
+
+// ---- Tách riêng phần định dạng (uppercase/titlecase/currency) ra thành hàm
+// dùng chung, để có thể gọi lại đúng lúc sau khi IME ghép chữ xong
+// (compositionend) thay vì chạy trên từng ký tự gõ như trước đây (gây lỗi
+// với IME tiếng Việt).
+function applyFieldFormatAndRender(target) {
+    let formatAttr = target.getAttribute('data-format');
+    if (formatAttr === 'uppercase') {
+        let start = target.selectionStart;
+        let end = target.selectionEnd;
+        target.value = target.value.toUpperCase();
+        target.setSelectionRange(start, end);
+    } else if (formatAttr === 'titlecase') {
+        let start = target.selectionStart;
+        let end = target.selectionEnd;
+        target.value = target.value.toLowerCase().replace(/(?:^|\s)\S/g, function (a) { return a.toUpperCase(); });
+        target.setSelectionRange(start, end);
+    } else if (formatAttr === 'currency') {
+        let raw = target.value.replace(/[^\d]/g, '');
+        if (raw) {
+            raw = String(parseInt(raw, 10));
+            target.value = Number(raw).toLocaleString('vi-VN');
+        } else {
+            target.value = '';
+        }
+        target.setSelectionRange(target.value.length, target.value.length);
+    }
+
+    // Cập nhật Badge nhận diện khu vực ngay sau khi định dạng (uppercase) áp dụng
+    if (target.id === "field_contractId") updateRegionIndicator(target.value);
 
     renderEmail();
 }
@@ -386,8 +517,14 @@ function copyEmailContent() {
     const content = cloneContent.innerHTML;
     const sig = sigEl ? sigEl.innerHTML : "";
 
+    // FIX: Trước đây dùng "margin: 0 auto" khiến khối nội dung (rộng tối đa
+    // 800px) bị tự động canh GIỮA trong các cửa sổ soạn thư rộng hơn 800px
+    // (điển hình là Thunderbird trên màn hình lớn), làm nội dung trông như bị
+    // "đẩy ra giữa". Trên Webmail thì khung soạn thư vốn đã hẹp (< 800px) nên
+    // trước đây không thấy hiện tượng này. Đổi thành "margin: 0" để nội dung
+    // luôn bắt đầu từ mép trái, đồng nhất trên cả Webmail lẫn Thunderbird.
     const fullHtml = `
-        <div style="font-family: 'Aptos', 'Segoe UI', Arial, sans-serif; font-size: 12pt; color: #2d3748; max-width: 800px; margin: 0 auto; line-height: 1.5;">
+        <div style="font-family: 'Aptos', 'Segoe UI', Arial, sans-serif; font-size: 12pt; color: #2d3748; max-width: 800px; margin: 0; line-height: 1.5;">
             ${content}
             ${sig ? `<br><br>${sig}` : ''}
         </div>

@@ -6,12 +6,18 @@
      Email" của G-Portal: "Soạn Email" và "Thống kê sử dụng".
    - Phần "Cài đặt" (BCC mặc định + Email/Ký tự nhận diện Vùng miền) không
      còn là 1 tab riêng nữa — đã chuyển thẳng vào trang Cài Đặt chung
-     (view-settings) của G-Portal, dùng lại đúng các ID input cũ
-     (settingsBccEmail, settingsSouthEmail...) nên không cần sửa gì ở
-     region-detector.js ngoài đổi tên hàm gọi lại (loadSettingsUI ->
-     loadEmailSettingsUI) cho rõ nghĩa hơn giữa 2 module.
+     (view-settings) của G-Portal.
+
+   ĐỒNG BỘ TÍNH NĂNG MỚI NHẤT TỪ REPO GỐC (email-template-tool):
+   - Danh sách vùng miền giờ được dựng ĐỘNG từ regionManager.regionDefs (7
+     khu vực: Hà Nội, Hồ Chí Minh, Tây Bắc Bộ + Quảng Ninh, Đông Bắc Bộ +
+     Hải Phòng + Hải Dương, Miền Trung - Tây Nguyên + Khánh Hòa + Đà Nẵng,
+     Đông Nam Bộ + Đồng Nai + Bình Dương + Vũng Tàu, Tây Nam Bộ) vào khung
+     #emailRegionGrid trong index.html — thay cho 2 thẻ Nam/Bắc cố định
+     trước đây. Thêm/bớt/đổi tên vùng miền chỉ cần sửa region-detector.js,
+     không cần đụng tới index.html hay file này nữa.
    - Thống kê tổng hợp TẤT CẢ nhân viên vẫn lấy từ Google Sheet qua API GET
-     (STATS_API_URL_READ), y hệt bản gốc.
+     (STATS_API_URL_READ), y hệt bản gốc — không thay đổi.
    ========================================================= */
 
 const STATS_API_URL_READ = "https://script.google.com/macros/s/AKfycbzIGRhMMZ5KLjjNgkocTxX0CrEM2_zTipwK4LGQfJweaEsRejqOksxG3C8XfopB0gZ4/exec";
@@ -61,30 +67,50 @@ window.refreshEmailStatsIfActive = function () {
 function loadEmailSettingsUI() {
     if (typeof regionManager === "undefined") return;
 
-    const southEmailInput = document.getElementById("settingsSouthEmail");
-    const northEmailInput = document.getElementById("settingsNorthEmail");
     const bccEmailInput = document.getElementById("settingsBccEmail");
-    const southPatterns = document.getElementById("settingsSouthPatterns");
-    const northPatterns = document.getElementById("settingsNorthPatterns");
-
-    if (southEmailInput) southEmailInput.value = regionManager.settings.southEmail || "";
-    if (northEmailInput) northEmailInput.value = regionManager.settings.northEmail || "";
     if (bccEmailInput) bccEmailInput.value = regionManager.settings.defaultBccEmail || "";
-    if (southPatterns) southPatterns.value = regionManager.getSouthPatterns ? regionManager.getSouthPatterns() : "";
-    if (northPatterns) northPatterns.value = regionManager.getNorthPatterns ? regionManager.getNorthPatterns() : "";
 
+    renderEmailRegionCards();
     disableEmailSettingsEditing();
 }
 // Giữ tên hàm cũ làm alias, phòng khi có code khác còn gọi tên cũ.
 window.loadEmailSettingsUI = loadEmailSettingsUI;
 window.loadSettingsUI = loadEmailSettingsUI;
 
-function disableEmailSettingsEditing() {
-    const inputs = ["settingsSouthEmail", "settingsNorthEmail", "settingsBccEmail", "settingsSouthPatterns", "settingsNorthPatterns"];
-    inputs.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.disabled = true;
+// Dựng động thẻ Email + Ký tự nhận diện cho TỪNG vùng miền khai báo trong
+// regionManager.regionDefs, vào khung #emailRegionGrid có sẵn trong
+// index.html (mục Cài Đặt > Cấu hình module Soạn Email). Không cần sửa HTML
+// mỗi khi thêm/bớt/đổi tên vùng miền.
+function renderEmailRegionCards() {
+    const container = document.getElementById("emailRegionGrid");
+    if (!container || typeof regionManager === "undefined") return;
+
+    let html = "";
+    regionManager.regionDefs.forEach(r => {
+        const emailValue = regionManager.settings[r.key + "Email"] || "";
+        html += `
+            <div class="settings-card">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="settings-icon" style="background: var(--accent-glow); color: var(--success);">
+                        <i class="fa-solid fa-location-dot"></i>
+                    </div>
+                    <h3 style="font-weight:700; font-size:15px; color: var(--text-main);">${r.label}</h3>
+                </div>
+                <label class="soc-label">Email khu vực:</label>
+                <input type="text" id="settings_${r.key}Email" class="soc-input w-full mb-4" value="${emailValue}" placeholder="Chưa cấu hình trên Google Sheet" disabled>
+                <label class="soc-label">Ký tự nhận diện:</label>
+                <input type="text" id="settings_${r.key}Patterns" class="soc-input w-full font-mono" value="${r.patterns.join(', ')}" disabled>
+            </div>
+        `;
     });
+    container.innerHTML = html;
+}
+
+function disableEmailSettingsEditing() {
+    const bccInput = document.getElementById("settingsBccEmail");
+    if (bccInput) bccInput.disabled = true;
+    // Các ô Email/Ký tự nhận diện theo từng vùng miền đã được render ở trạng
+    // thái disabled sẵn trong renderEmailRegionCards(), không cần xử lý thêm.
 
     const notice = document.getElementById("emailSettingsLockNotice");
     if (notice && !notice.dataset.filled) {

@@ -7,6 +7,12 @@
    Toàn bộ phần Đăng nhập / Sidebar / Header riêng của bản gốc đã bị
    loại bỏ vì module này giờ dùng chung khung sườn + đăng nhập Google
    của G-Portal.
+
+   ĐỒNG BỘ TÍNH NĂNG MỚI NHẤT TỪ REPO GỐC (email-template-tool):
+   - Badge nhận diện khu vực (#regionIndicator) dưới ô Số hợp đồng, kèm
+     trạng thái cảnh báo nhấp nháy khi không nhận diện được khu vực
+     (.region-indicator-warning).
+   - Dòng ghi chú nhắc kiểm tra lại email dưới CC/BCC (.cc-bcc-note).
    ========================================================= */
 
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
@@ -148,6 +154,38 @@
 #view-email #ccValue, #view-email #bccValue {
     display: block !important; flex: 1 !important; word-break: break-all !important;
     overflow-wrap: break-word !important; white-space: normal !important; line-height: 1.6 !important; padding-bottom: 4px;
+}
+
+/* ----- Dòng ghi chú nhắc kiểm tra lại email dưới CC / BCC -----
+   Không nhấp nháy (khác với badge khu vực) — chỉ cần màu đỏ rõ và chữ nhỉnh
+   hơn một chút để dễ đọc, không gây chói mắt khi nhìn lâu trong ca làm việc. */
+#view-email .cc-bcc-note {
+    color: var(--et-danger) !important;
+    font-size: 11.5px !important;
+    font-weight: 600;
+    font-style: normal !important;
+    line-height: 1.4;
+    margin-top: 4px;
+}
+
+/* ----- Badge nhận diện khu vực (dưới ô Số hợp đồng) -----
+   Dùng position tĩnh (nằm trong luồng bình thường), tự đẩy nội dung phía
+   dưới xuống khi xuất hiện — không cần margin cố định, không đè chữ. Trạng
+   thái "không nhận diện được khu vực" được làm nổi bật: nền đỏ đậm + chữ
+   trắng to hơn + nhấp nháy nhẹ để nhân viên dễ chú ý và kiểm tra lại. */
+@keyframes region-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+}
+#view-email #regionIndicator {
+    transition: background-color .15s ease, color .15s ease, border-color .15s ease;
+}
+#view-email .region-indicator-warning {
+    animation: region-blink 1.1s ease-in-out infinite;
+    box-shadow: 0 2px 8px rgba(220, 38, 38, 0.35);
+}
+@media (prefers-reduced-motion: reduce) {
+    #view-email .region-indicator-warning { animation: none; }
 }
 
 /* ----- Trợ năng ----- */
