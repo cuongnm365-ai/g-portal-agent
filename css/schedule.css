@@ -204,3 +204,77 @@
     .sch-daynum { font-size: 13px; }
     .sch-month-head { font-size: 11px; padding: 9px 0; }
 }
+/* ============================================================
+   MONITORING TABLE
+   ============================================================ */
+.monitoring-table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+}
+.monitoring-table thead th {
+    background: var(--bg-hover);
+    color: var(--text-muted);
+    font-size: 11.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: 12px 10px;
+    text-align: left;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--border-color);
+    position: sticky; top: 0; z-index: 1;
+}
+.monitoring-table tbody tr {
+    border-bottom: 1px solid var(--border-color);
+    transition: background 0.15s;
+}
+.monitoring-table tbody tr:hover {
+    background: var(--bg-hover);
+}
+.monitoring-table tbody td {
+    padding: 10px 10px;
+    vertical-align: middle;
+    color: var(--text-main);
+}
+.mon-cell-truncate {
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12.5px;
+    color: var(--text-muted);
+}
+
+/* ============================================================
+   WORKFLOW TREE - enhanced
+   ============================================================ */
+.workflow-tree {
+    display: flex; flex-direction: column; gap: 8px;
+}
+.wf-parent-node {
+    background: var(--bg-hover);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    overflow: hidden;
+}
+.wf-parent-header {
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 600; color: var(--text-main);
+    padding: 10px 14px;
+    font-size: 13.5px;
+    border-bottom: 1px solid var(--border-color);
+}
+.wf-child-list {
+    display: flex; flex-direction: column;
+    padding: 6px 14px 10px 14px;
+    gap: 4px;
+}
+.wf-child-item {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 13px; color: var(--text-muted);
+    padding: 4px 0;
+}
+.custom-chk {
+    width: 15px; height: 15px; cursor: pointer;
+    accent-color: var(--accent);
+    flex-shrink: 0;
+}

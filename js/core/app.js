@@ -16,7 +16,10 @@ const VIEW_META = {
     schedule: { title: 'Lịch Làm Việc', subtitle: 'Quản lý ca làm việc, đổi ca, trực hộ, tăng cường' },
     productivity: { title: 'Năng Suất', subtitle: 'Nhập và theo dõi năng suất cuộc gọi hàng ngày' },
     email: { title: 'Soạn Email', subtitle: 'Khởi tạo nhanh nội dung email gửi khách hàng theo mẫu chuẩn' },
-    settings: { title: 'Cài Đặt', subtitle: 'Thiết lập ca làm việc, nhân sự, PCCV, tham số KPI & mẫu Email' }
+    settings: { title: 'Cài Đặt', subtitle: 'Thiết lập ca làm việc, nhân sự, PCCV, tham số KPI & mẫu Email' },
+    monitoring: { title: 'Giám Sát', subtitle: 'Theo dõi, nhập dữ liệu request layer 2' },
+    complaint: { title: 'Complaint', subtitle: 'Công cụ đang phát triển' },
+    workflow_setting: { title: 'Workflow Setting', subtitle: 'Thiết lập trường dữ liệu cho Giám Sát và Complaint' }
 };
 
 const SIDEBAR_PIN_KEY = 'gportal_sidebar_pinned';
@@ -187,15 +190,12 @@ window.switchView = function (viewName) {
     }
 
     if (viewName === 'schedule' && typeof window.renderCalendar === 'function') window.renderCalendar();
-    if (viewName === 'schedule' && typeof window.loadScheduleFromDrive === 'function') {
-        window.loadScheduleFromDrive().catch(err => {
-            console.error('[Schedule] Không load được lịch từ Drive khi chuyển sang schedule:', err);
-        });
-    }
     if (viewName === 'settings' && typeof renderSettingsUI === 'function') renderSettingsUI();
     if (viewName === 'productivity' && typeof loadProductivityForDate === 'function') loadProductivityForDate();
     if (viewName === 'dashboard' && typeof window.updateDashboard === 'function') window.updateDashboard();
     if (viewName === 'email' && typeof window.refreshEmailStatsIfActive === 'function') window.refreshEmailStatsIfActive();
+    if (viewName === 'monitoring' && typeof window.loadMonitoringData === 'function') window.loadMonitoringData();
+    if (viewName === 'workflow_setting' && typeof renderWorkflowSettingsUI === 'function') renderWorkflowSettingsUI();
 };
 
 window.showApp = function () {
@@ -205,13 +205,6 @@ window.showApp = function () {
     if (shell) shell.style.display = 'block';
     const view = (window.location.hash || '').replace('#', '') || AppState.currentView || 'dashboard';
     if (VIEW_META[view]) window.switchView(view);
-
-    // BẮT BUỘC: load lịch khi app hiện ra và Google đã login
-    if (typeof window.loadScheduleFromDrive === 'function') {
-        window.loadScheduleFromDrive().catch(err => {
-            console.error('[Schedule] Không load được lịch từ Drive khi mở app:', err);
-        });
-    }
 };
 
 window.showLogin = function (message) {
