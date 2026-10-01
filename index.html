@@ -123,8 +123,17 @@
                 <a href="#email" class="menu-item" data-target="email">
                     <i class='bx bx-envelope'></i><span class="menu-text">Soạn Email</span>
                 </a>
+                <a href="#monitoring" class="menu-item" data-target="monitoring">
+                    <i class='bx bx-desktop'></i><span class="menu-text">Giám Sát</span>
+                </a>
+                <a href="#complaint" class="menu-item" data-target="complaint">
+                    <i class='bx bx-message-error'></i><span class="menu-text">Complaint</span>
+                </a>
                 <a href="#settings" class="menu-item" data-target="settings">
                     <i class='bx bx-cog'></i><span class="menu-text">Cài Đặt</span>
+                </a>
+                <a href="#workflow_setting" class="menu-item" data-target="workflow_setting">
+                    <i class='bx bx-slider'></i><span class="menu-text">Workflow Setting</span>
                 </a>
             </nav>
             <div class="sidebar-footer">
@@ -148,6 +157,152 @@
             </header>
 
             <div class="content-body">
+                
+                <section id="view-monitoring" class="app-view">
+                    <!-- Toolbar -->
+                    <div class="toolbar ai-card" style="flex-wrap:wrap; gap:10px;">
+                        <div class="toolbar-left" style="flex-wrap:wrap; gap:8px;">
+                            <select id="mon-filter-month" class="form-select" style="width:180px;"></select>
+                            <select id="mon-filter-status" class="form-select" style="width:160px;">
+                                <option value="">-- Tất cả trạng thái --</option>
+                                <option value="In Progress">In Progress</option>
+                                <option value="Fully Resolved">Fully Resolved</option>
+                                <option value="Closed without Action">Closed without Action</option>
+                            </select>
+                            <select id="mon-filter-region" class="form-select" style="width:180px;"><option value="">-- Tất cả khu vực --</option></select>
+                            <button id="btn-mon-refresh" class="btn-ghost"><i class='bx bx-refresh'></i> Làm mới</button>
+                        </div>
+                        <div class="toolbar-right" style="gap:8px;">
+                            <span id="mon-count-badge" class="tag" style="font-size:12px;">0 bản ghi</span>
+                            <button id="btn-mon-export-excel" class="btn-ghost"><i class='bx bx-download'></i> Export Excel</button>
+                            <button id="btn-mon-add" class="btn-primary"><i class='bx bx-plus'></i> Thêm mới</button>
+                        </div>
+                    </div>
+
+                    <!-- Table -->
+                    <div class="ai-card" style="margin-top:16px; padding:0; overflow:hidden;">
+                        <div style="overflow-x:auto;">
+                            <table id="mon-table" class="monitoring-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width:40px;">STT</th>
+                                        <th style="width:140px;">Khu Vực</th>
+                                        <th style="width:160px;">Tỉnh/Thành</th>
+                                        <th style="width:130px;">Chi Nhánh</th>
+                                        <th style="width:140px;">TG Tiếp nhận</th>
+                                        <th style="width:110px;">Ticket ID</th>
+                                        <th style="width:100px;">SR ID</th>
+                                        <th style="width:110px;">Hợp Đồng</th>
+                                        <th style="width:110px;">SĐT</th>
+                                        <th style="min-width:240px;">Nội dung YC</th>
+                                        <th style="width:130px;">Trạng thái</th>
+                                        <th style="width:130px;">Loại RQL2</th>
+                                        <th style="width:130px;">Phân loại</th>
+                                        <th style="width:130px;">Phương án</th>
+                                        <th style="width:140px;">TG Hoàn tất</th>
+                                        <th style="width:110px;">TG Xử lý</th>
+                                        <th style="width:130px;">Hoàn tất</th>
+                                        <th style="width:70px;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="mon-tbody">
+                                    <tr><td colspan="18" style="text-align:center; padding:40px; color:var(--text-muted);">Chưa có dữ liệu — bấm <strong>Thêm mới</strong> để bắt đầu.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="view-complaint" class="app-view">
+                    <div class="ai-card">
+                        <h3><i class='bx bx-message-error'></i> Complaint (Đang phát triển)</h3>
+                        <p class="text-sm mt-2 text-gray-400">Công cụ đang trong quá trình phát triển.</p>
+                    </div>
+                </section>
+
+                <section id="view-workflow_setting" class="app-view">
+                    <!-- Workflow setting UI will be generated via JS or built here -->
+                    <div class="ai-card mb-4">
+                        <h3><i class='bx bx-slider'></i> Cấu hình Workflow: Giám Sát & Complaint</h3>
+                        <p class="text-sm mt-2 text-gray-400">Thiết lập các danh mục động (Loại RQL2, Phân loại, Phương án) cho 2 module trên.</p>
+                    </div>
+                    <div class="settings-grid" id="workflow-settings-container">
+                        <!-- Request Type & Sub-Type -->
+                        <div class="ai-card span-2">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px;">
+                                <h3><i class='bx bx-list-ul'></i> Phân loại RQL2</h3>
+                                <div style="display:flex; gap:8px;">
+                                    <button id="btn-export-req" class="btn-ghost" style="padding:4px 8px; font-size:12px;"><i class='bx bx-download'></i> Export</button>
+                                    <label for="import-req-excel" class="btn-ghost" style="cursor:pointer; display:inline-flex; align-items:center; gap:4px; padding:4px 8px; font-size:12px;"><i class='bx bx-upload'></i> Import</label>
+                                    <input type="file" id="import-req-excel" accept=".xlsx, .xls" style="display:none;">
+                                </div>
+                            </div>
+                            
+                            <div class="input-group" style="margin-bottom:16px;">
+                                <input type="text" id="ws-req-type-name" list="rql2-parent-list" placeholder="Chọn hoặc nhập mới Loại RQL2 (Mục cha)">
+                                <datalist id="rql2-parent-list"></datalist>
+                                <input type="text" id="ws-sub-type-name" placeholder="Phân loại con (Sub-Type)">
+                                <button id="btn-add-req-type" class="btn-primary" style="white-space:nowrap;"><i class='bx bx-plus'></i> Thêm</button>
+                            </div>
+                            
+                            <div style="margin-bottom:10px;">
+                                <button id="btn-del-selected-req" class="btn-ghost danger" style="font-size:12px; padding:6px 12px; display:none;"><i class='bx bx-trash'></i> Xóa mục đã chọn</button>
+                            </div>
+                            <div id="ws-req-type-list" class="workflow-tree"></div>
+                        </div>
+
+                        <!-- Regions / Provinces / Branches -->
+                        <div class="ai-card span-2">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px;">
+                                <h3><i class='bx bx-map-pin'></i> Dữ liệu Vùng miền</h3>
+                                <div style="display:flex; gap:8px;">
+                                    <button id="btn-export-region" class="btn-ghost" style="padding:4px 8px; font-size:12px;"><i class='bx bx-download'></i> Export</button>
+                                    <label for="import-region-excel" class="btn-ghost" style="cursor:pointer; display:inline-flex; align-items:center; gap:4px; padding:4px 8px; font-size:12px;"><i class='bx bx-upload'></i> Import</label>
+                                    <input type="file" id="import-region-excel" accept=".xlsx, .xls" style="display:none;">
+                                </div>
+                            </div>
+
+                            <div class="input-group" style="margin-bottom:8px;">
+                                <input type="text" id="ws-region-name" list="region-parent-list" placeholder="Khu Vực">
+                                <datalist id="region-parent-list"></datalist>
+                                <input type="text" id="ws-province-code" placeholder="Mã Tỉnh (VD: HN)">
+                                <input type="text" id="ws-province-name" placeholder="Tỉnh/Thành (VD: 01.Hà Nội)">
+                            </div>
+                            <div class="input-group" style="margin-bottom:16px;">
+                                <input type="text" id="ws-branch-name" placeholder="Chi Nhánh (Thêm nhiều cách nhau bằng dấu phẩy)">
+                                <button id="btn-add-region" class="btn-primary" style="white-space:nowrap;"><i class='bx bx-plus'></i> Thêm</button>
+                            </div>
+
+                            <div style="margin-bottom:10px;">
+                                <button id="btn-del-selected-region" class="btn-ghost danger" style="font-size:12px; padding:6px 12px; display:none;"><i class='bx bx-trash'></i> Xóa mục đã chọn</button>
+                            </div>
+                            <div id="ws-region-list" class="workflow-tree"></div>
+                        </div>
+
+                        <!-- Resolution -->
+                        <div class="ai-card span-2">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px;">
+                                <h3><i class='bx bx-check-shield'></i> Phương án (Resolution)</h3>
+                                <div style="display:flex; gap:8px;">
+                                    <button id="btn-export-res" class="btn-ghost" style="padding:4px 8px; font-size:12px;"><i class='bx bx-download'></i> Export</button>
+                                    <label for="import-res-excel" class="btn-ghost" style="cursor:pointer; display:inline-flex; align-items:center; gap:4px; padding:4px 8px; font-size:12px;"><i class='bx bx-upload'></i> Import</label>
+                                    <input type="file" id="import-res-excel" accept=".xlsx, .xls" style="display:none;">
+                                </div>
+                            </div>
+                            
+                            <div class="input-group" style="margin-bottom:16px;">
+                                <input type="text" id="ws-resolution-name" placeholder="Tên Phương án">
+                                <button id="btn-add-resolution" class="btn-primary" style="white-space:nowrap;"><i class='bx bx-plus'></i> Thêm</button>
+                            </div>
+
+                            <div style="margin-bottom:10px;">
+                                <button id="btn-del-selected-res" class="btn-ghost danger" style="font-size:12px; padding:6px 12px; display:none;"><i class='bx bx-trash'></i> Xóa mục đã chọn</button>
+                            </div>
+                            <ul id="ws-resolution-list" class="data-list"></ul>
+                        </div>
+                    </div>
+                </section>
+
 
                                 <section id="view-dashboard" class="app-view active">
                     <div class="toolbar ai-card">
@@ -603,6 +758,8 @@
     <script src="js/core/drive.js"></script>
 
         <script src="js/modules/settings/settings.js"></script>
+    <script src="js/modules/workflow-setting/workflow-setting.js"></script>
+    <script src="js/modules/monitoring/monitoring.js"></script>
     <script src="js/modules/schedule/schedule.js"></script>
     <script src="js/modules/productivity/productivity.js"></script>
     <script src="js/modules/dashboard/dashboard.js"></script>
@@ -644,5 +801,98 @@
           document.body.appendChild(t);
       })();
     </script>
+    <!-- Modal Thêm/Sửa Request Giám Sát -->
+    <div id="mon-modal" class="modal-overlay">
+        <div class="modal-content ai-card" style="max-width:680px; width:95vw;">
+            <div class="modal-header">
+                <h3 id="mon-modal-title">Thêm Request mới</h3>
+                <button class="btn-close-modal" id="btn-close-mon-modal" type="button"><i class='bx bx-x'></i></button>
+            </div>
+            <div class="modal-body">
+                <!-- Step 1: Nội dung YC — nhập trước, auto-extract phía dưới -->
+                <div class="input-group-col" style="margin-bottom:14px;">
+                    <label>Nội dung YC <span style="color:var(--danger)">*</span></label>
+                    <textarea id="mon-details" class="form-input" rows="4" placeholder="Dán toàn bộ nội dung request vào đây...&#10;Hệ thống sẽ tự trích xuất: Mã hợp đồng, SĐT, Ticket ID, SR ID"></textarea>
+                </div>
+                <div style="display:flex; gap:8px; margin-bottom:18px;">
+                    <button id="btn-mon-extract" class="btn-primary" type="button" style="font-size:12px; padding:8px 14px;"><i class='bx bx-wand2'></i> Tự động trích xuất</button>
+                </div>
+
+                <div class="settings-grid" style="gap:14px;">
+                    <!-- Trái -->
+                    <div style="display:flex; flex-direction:column; gap:12px;">
+                        <div class="input-group-col">
+                            <label>Hợp Đồng</label>
+                            <input type="text" id="mon-contract" class="form-input" placeholder="VD: SG012345678">
+                        </div>
+                        <div class="input-group-col">
+                            <label>SĐT</label>
+                            <input type="text" id="mon-phone" class="form-input" placeholder="VD: 0901234567">
+                        </div>
+                        <div class="input-group-col">
+                            <label>Ticket ID</label>
+                            <input type="text" id="mon-ticket" class="form-input" placeholder="VD: INC0001234">
+                        </div>
+                        <div class="input-group-col">
+                            <label>SR ID</label>
+                            <input type="text" id="mon-sr" class="form-input" placeholder="VD: SR0001234">
+                        </div>
+                        <div class="input-group-col">
+                            <label>Khu Vực <small style="color:var(--text-muted)">(tự động)</small></label>
+                            <input type="text" id="mon-region" class="form-input" readonly placeholder="Tự động từ Hợp đồng">
+                        </div>
+                        <div class="input-group-col">
+                            <label>Tỉnh/Thành <small style="color:var(--text-muted)">(tự động)</small></label>
+                            <input type="text" id="mon-province" class="form-input" readonly placeholder="Tự động từ Hợp đồng">
+                        </div>
+                        <div class="input-group-col">
+                            <label>Chi Nhánh</label>
+                            <select id="mon-branch" class="form-select"><option value="">-- Chọn chi nhánh --</option></select>
+                        </div>
+                    </div>
+                    <!-- Phải -->
+                    <div style="display:flex; flex-direction:column; gap:12px;">
+                        <div class="input-group-col">
+                            <label>TG Tiếp nhận</label>
+                            <input type="datetime-local" id="mon-received-time" class="form-input">
+                        </div>
+                        <div class="input-group-col">
+                            <label>Loại RQL2</label>
+                            <select id="mon-req-type" class="form-select"><option value="">-- Chọn Loại RQL2 --</option></select>
+                        </div>
+                        <div class="input-group-col">
+                            <label>Phân loại</label>
+                            <select id="mon-sub-type" class="form-select"><option value="">-- Chọn Phân loại --</option></select>
+                        </div>
+                        <div class="input-group-col">
+                            <label>Phương án</label>
+                            <select id="mon-resolution" class="form-select"><option value="">-- Chọn Phương án --</option></select>
+                        </div>
+                        <div class="input-group-col">
+                            <label>Hoàn tất</label>
+                            <select id="mon-completed" class="form-select">
+                                <option value="">-- Chưa hoàn tất --</option>
+                                <option value="Completed">Completed</option>
+                                <option value="Closed by Others">Closed by Others</option>
+                            </select>
+                        </div>
+                        <div class="input-group-col" id="mon-completed-time-group">
+                            <label>TG Hoàn tất</label>
+                            <input type="datetime-local" id="mon-completed-time" class="form-input">
+                        </div>
+                        <div class="input-group-col">
+                            <label>Trạng thái <small style="color:var(--text-muted)">(tự động)</small></label>
+                            <input type="text" id="mon-status-display" class="form-input" readonly>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" style="margin-top:16px; display:flex; justify-content:space-between; align-items:center; gap:12px;">
+                <button id="btn-mon-delete" class="btn-ghost danger" type="button" style="display:none;"><i class='bx bx-trash'></i> Xóa</button>
+                <button id="btn-mon-save" class="btn-primary" type="button" style="margin-left:auto;"><i class='bx bx-save'></i> Lưu</button>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>

@@ -79,3 +79,25 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.8); cur
 
 /* ---------- Card nghiệp vụ dùng chung cho phần Cài Đặt gộp (Ca/PCCV/Email...) ---------- */
 .ai-card.span-2 { grid-column: 1 / -1; }
+/* ================= Workflow Tree & Checkboxes ================= */
+.workflow-tree {
+    display: flex; flex-direction: column; gap: 10px;
+}
+.wf-parent-node {
+    background: rgba(255,255,255,0.03); border: 1px solid var(--border-color);
+    border-radius: 8px; padding: 12px;
+}
+.wf-parent-header {
+    display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--text-main);
+    margin-bottom: 8px; font-size: 14.5px;
+}
+.wf-child-list {
+    display: flex; flex-direction: column; gap: 6px; padding-left: 28px;
+}
+.wf-child-item {
+    display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text-muted);
+}
+.custom-chk {
+    width: 16px; height: 16px; cursor: pointer;
+    accent-color: var(--accent);
+}
