@@ -17,6 +17,7 @@
     <link rel="stylesheet" href="css/base.css">
     <link rel="stylesheet" href="css/login.css">
     <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/schedule.css">
     <link rel="stylesheet" href="css/email-tool.css">
 
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-P091WPTF8N"></script>
@@ -193,11 +194,16 @@
                 </section>
 
                                 <section id="view-schedule" class="app-view">
-                    <div class="toolbar ai-card">
+                    <div class="toolbar ai-card sch-toolbar">
                         <div class="toolbar-left">
-                            <button id="btn-prev-month" class="btn-icon"><i class='bx bx-chevron-left'></i></button>
-                            <h3 id="current-month-display" style="min-width: 140px; text-align: center; color: var(--accent); font-size:15px;">Tháng --/----</h3>
-                            <button id="btn-next-month" class="btn-icon"><i class='bx bx-chevron-right'></i></button>
+                            <button id="btn-prev-month" class="btn-icon" type="button" title="Trước"><i class='bx bx-chevron-left'></i></button>
+                            <h3 id="current-month-display" style="min-width: 190px; text-align: center; color: var(--accent); font-size:15px;">Tháng --/----</h3>
+                            <button id="btn-next-month" class="btn-icon" type="button" title="Sau"><i class='bx bx-chevron-right'></i></button>
+                            <button id="btn-go-today" class="btn-ghost" type="button" style="padding: 8px 14px;">Hôm nay</button>
+                            <div class="sch-view-switch">
+                                <button id="btn-view-month" type="button" class="active"><i class='bx bx-calendar'></i> Tháng</button>
+                                <button id="btn-view-week" type="button"><i class='bx bx-columns'></i> Tuần</button>
+                            </div>
                         </div>
                         <div class="toolbar-right">
                             <button id="btn-download-schedule-tpl" class="btn-primary" style="background: #2563eb;"><i class='bx bx-download'></i> File Mẫu</button>
@@ -215,9 +221,25 @@
                     </div>
 
                     <div class="schedule-layout">
-                        <div class="calendar-container ai-card">
-                            <div class="calendar-header-days"><div>CN</div><div>T2</div><div>T3</div><div>T4</div><div>T5</div><div>T6</div><div>T7</div></div>
-                            <div id="calendar-grid" class="calendar-grid"></div>
+                        <div class="sch-main ai-card">
+                            <div class="sch-legend">
+                                <span><i class="sw sang"></i>Ca sáng</span>
+                                <span><i class="sw chieu"></i>Ca chiều</span>
+                                <span><i class="sw dem"></i>Ca đêm</span>
+                                <span><i class="sw otonly"></i>Tăng cường cả ca (ngày nghỉ)</span>
+                                <span><i class="sw otadd"></i>+OT thêm vào ca chính</span>
+                                <span><i class="sw cover"></i>Trực hộ</span>
+                                <span><i class="sw swap"></i>Đổi ca</span>
+                            </div>
+
+                            <div id="sch-month-view">
+                                <div class="sch-month-head"><div>T2</div><div>T3</div><div>T4</div><div>T5</div><div>T6</div><div>T7</div><div>CN</div></div>
+                                <div id="calendar-grid" class="sch-month-grid"></div>
+                            </div>
+
+                            <div id="sch-week-view" style="display: none;">
+                                <div id="week-board"></div>
+                            </div>
                         </div>
                         <aside class="schedule-side ai-card">
                             <div class="side-head"><span><i class='bx bx-briefcase-alt-2'></i> Phân công tháng</span><b id="schedule-task-count">0</b></div>
@@ -506,32 +528,38 @@
     </div>
 
         <div id="day-modal" class="modal-overlay">
-        <div class="modal-content ai-card">
+        <div class="modal-content ai-card day-modal-content">
             <div class="modal-header">
                 <h3 id="modal-date-title">Hiệu chỉnh ngày</h3>
                 <button class="btn-close-modal" id="btn-close-modal" type="button"><i class='bx bx-x'></i></button>
             </div>
             <div class="modal-body">
+                <div id="modal-preview" class="modal-preview"></div>
+
                 <div class="input-group">
-                    <label style="width:110px;">Phân loại ca:</label>
+                    <label>Phân loại ca:</label>
                     <select id="modal-shift-type" class="form-select">
                         <option value="chinhchu">Chính chủ</option>
                         <option value="doica">Đổi ca</option>
                         <option value="trucho">Trực hộ</option>
+                        <option value="ot">Tăng cường (OT) – ngày nghỉ</option>
                     </select>
                 </div>
-                <div class="input-group"><label style="width:110px;">Ca chính:</label><select id="modal-shift" class="form-select"></select></div>
-                <div class="input-group"><label style="width:110px;">Tăng cường (OT):</label><select id="modal-ot" class="form-select"></select></div>
-                <div class="input-group"><label style="width:110px;">Phân công (PCCV):</label><select id="modal-task" class="form-select"></select></div>
+                <div class="input-group"><label>Ca chính:</label><select id="modal-shift" class="form-select"></select></div>
 
-                <div class="input-group" id="modal-trade-group" style="display:none;">
-                    <label style="width:110px;">Người đổi ca:</label>
+                <div class="input-group" id="modal-trade-group">
+                    <label>Người đổi ca:</label>
                     <select id="modal-trade" class="form-select"></select>
                 </div>
-                <div class="input-group" id="modal-help-group" style="display:none;">
-                    <label style="width:110px;">Người trực hộ:</label>
+                <div class="input-group" id="modal-help-group">
+                    <label>Người trực hộ:</label>
                     <select id="modal-help" class="form-select"></select>
                 </div>
+
+                <div class="input-group"><label>Tăng cường (OT):</label><select id="modal-ot" class="form-select"></select></div>
+                <small class="modal-hint">Chọn ca S+, T+, C+... để làm thêm ngoài ca chính. Ngày nghỉ muốn làm nguyên ca (VD S2) thì chọn phân loại "Tăng cường (OT) – ngày nghỉ" rồi chọn ca ở đây.</small>
+
+                <div class="input-group"><label>Phân công (PCCV):</label><select id="modal-task" class="form-select"></select></div>
             </div>
             <div class="modal-footer" style="margin-top: 16px; display:flex; justify-content: space-between; align-items:center; gap:12px;">
                 <button id="btn-delete-day" class="btn-ghost danger" type="button" style="display:none;"><i class='bx bx-trash'></i> Xóa lịch</button>
