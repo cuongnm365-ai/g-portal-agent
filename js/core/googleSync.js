@@ -3,7 +3,7 @@
  * 
  * Tổng hợp toàn bộ logic vận hành Google Ecosystem cho G-Portal:
  * - Xác thực OAuth2 & Khôi phục phiên ngầm (Silent SSO) qua window.GPORTAL_SESSION_MARKER_KEY
- * - Đọc/ghi cấu hình & dữ liệu JSON vào các Thư mục Google Drive chỉ định (FOLDER_IDS)
+ * - Đọc/ghi cấu hình & dữ liệu JSON vào các Thư mục Google Drive phân tán theo FOLDER_IDS
  * - Đồng bộ Lịch làm việc, Lịch OT, Lịch họp và Google Tasks (PCCV) có bảo lưu trạng thái hoàn thành
  * - Tích hợp ghi nhận dữ liệu Trang Giám Sát lên Google Sheet chỉ định (datae2erq)
  */
@@ -373,7 +373,6 @@ function loadAllDataFromDrive() {
     if (typeof window.loadProductivityFromDrive === 'function') window.loadProductivityFromDrive();
 }
 
-// Gắn trực tiếp vào window để các thành phần HTML gọi được onclick
 window.handleAuthClick = function () {
     if (tokenClient) {
         pendingSilentRestore = false;
@@ -407,6 +406,84 @@ window.handleSignoutClick = function () {
         const box = document.getElementById('user-profile-box');
         if (box) box.innerHTML = '';
         if (typeof window.showLogin === 'function') window.showLogin('Đã đăng xuất.');
+    }
+};
+
+// ========================================================
+// ĐỒNG BỘ GOOGLE DRIVE (Lưu file theo Folder ID chỉ định)
+// ========================================================
+window.saveJsonToDrive = async function (fileName, jsonData, targetFolderId) {
+    if (!AppState.isLoggedIn || !gapi.client) return;
+    const fileContent = JSON.stringify(jsonData, null, 2);
+    const metadata = { name: fileName, mimeType: 'application/json' };
+    if (targetFolderId) metadata.parents = [targetFolderId];
+
+    try {
+        // Tìm xem file đã tồn tại trong folder chưa
+        let query = `name = '${fileName}' and trashed = false`;
+        if (targetFolderId) query += ` and '${targetFolderId}' in parents`;
+        
+        const listResp = await withGoogleApiRetry(() => gapi.client.drive.files.list({
+            q: query,
+            fields: 'files(id, name)'
+        }), { label: `Tìm file Drive ${fileName}` });
+
+        const files = listResp.result.files;
+        if (files && files.length > 0) {
+            const fileId = files[0].id;
+            await withGoogleApiRetry(() => gapi.client.request({
+                path: `/upload/drive/v3/files/${fileId}`,
+                method: 'PATCH',
+                params: { uploadType: 'media' },
+                body: fileContent
+            }), { label: `Cập nhật file Drive ${fileName}` });
+            console.log(`Đã cập nhật file ${fileName} lên Drive thành công.`);
+        } else {
+            const accessToken = gapi.auth.getToken().access_token;
+            const form = new FormData();
+            form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+            form.append('file', new Blob([fileContent], { type: 'application/json' }));
+
+            const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+                method: 'POST',
+                headers: new Headers({ 'Authorization': 'Bearer ' + accessToken }),
+                body: form
+            });
+            if (!response.ok) throw new Error(`Lỗi upload file: ${response.statusText}`);
+            console.log(`Đã tạo mới file ${fileName} trên Drive thành công.`);
+        }
+    } catch (err) {
+        console.error(`Lỗi saveJsonToDrive cho file ${fileName}:`, err);
+    }
+};
+
+window.getJsonFromDrive = async function (fileName, targetFolderId) {
+    if (!AppState.isLoggedIn || !gapi.client) return null;
+    try {
+        let query = `name = '${fileName}' and trashed = false`;
+        if (targetFolderId) query += ` and '${targetFolderId}' in parents`;
+
+        const listResp = await withGoogleApiRetry(() => gapi.client.drive.files.list({
+            q: query,
+            fields: 'files(id, name)'
+        }), { label: `Tìm đọc file Drive ${fileName}` });
+
+        const files = listResp.result.files;
+        if (!files || files.length === 0) return null;
+
+        const fileId = files[0].id;
+        const fileResp = await withGoogleApiRetry(() => gapi.client.drive.files.get({
+            fileId: fileId,
+            alt: 'media'
+        }), { label: `Tải nội dung file Drive ${fileName}` });
+
+        if (typeof fileResp.result === 'string') {
+            return JSON.parse(fileResp.result);
+        }
+        return fileResp.result;
+    } catch (err) {
+        console.error(`Lỗi getJsonFromDrive cho file ${fileName}:`, err);
+        return null;
     }
 };
 
@@ -825,7 +902,7 @@ window.reconcileMonthWithGoogle = async function (monthDate) {
 };
 
 // ========================================================
-// TÍCH HỢP GHI NHỮNG DỮ LIỆU TRANG GIÁM SÁT LÊN GOOGLE SHEET
+// TÍCH HỢP GHI NHẬN DỮ LIỆU TRANG GIÁM SÁT LÊN GOOGLE SHEET
 // ========================================================
 const MONITORING_SHEET_ID = '1HLQfY4l0PTqNZ-WL0o40jRJvw2DpSNW6RsVeOu_EYn0';
 const MONITORING_TAB_NAME = 'datae2erq';
