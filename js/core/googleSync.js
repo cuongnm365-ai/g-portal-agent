@@ -122,10 +122,9 @@ const FOLDER_IDS = {
 };
 window.GPORTAL_FOLDERS = FOLDER_IDS;
 const DISCOVERY_DOCS = [
-    'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest',
-    'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest',
-    'https://tasks.googleapis.com/$discovery/rest?version=v1',
-    'https://sheets.googleapis.com/$discovery/rest?version=v4'
+'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest',
+'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest',
+'https://tasks.googleapis.com/$discovery/rest?version=v1'
 ];
 
 // Scope 'openid email profile' để lấy tên/email người dùng (badge Header + module Soạn Email).
@@ -267,6 +266,14 @@ async function initializeGapiClient() {
             apiKey: API_KEY,
             discoveryDocs: DISCOVERY_DOCS,
         });
+        try {
+await gapi.client.load(
+'https://sheets.googleapis.com/$discovery/rest?version=v4'
+);
+console.log('[Monitoring] Google Sheets API loaded');
+} catch (err) {
+console.error('[Monitoring] Google Sheets API load failed:', err);
+}
         gapiInited = true;
         // Cảnh báo sớm ngay từ lúc khởi tạo nếu discovery doc của Tasks API
         // không nạp được namespace gapi.client.tasks — giúp phát hiện lỗi
