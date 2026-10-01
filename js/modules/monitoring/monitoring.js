@@ -9,8 +9,8 @@
 // ======================================================================
 // CONSTANTS & STATE
 // ======================================================================
-const MON_SHEET_NAME   = '1HLQfY4l0PTqNZ-WL0o40jRJvw2DpSNW6RsVeOu_EYn0';
-const MON_SHEET_TAB    = 'data';
+const MON_SPREADSHEET_ID = '1HLQfY4l0PTqNZ-WL0o40jRJvw2DpSNW6RsVeOu_EYn0';
+const MON_SHEET_TAB    = 'datae2erq';
 const MON_HEADERS      = [
     'id','stt','region','province','branch',
     'receivedTime','ticketId','srId','contractNo','contactNo',
@@ -80,60 +80,60 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ======================================================================
-// SHEET HELPERS
+// SHEET HELPERS - Đảm bảo Google Sheets API đã sẵn sàng
 // ======================================================================
 async function ensureSpreadsheet() {
-if (!AppState.isLoggedIn || !gapi.client) {
-throw new Error('Chưa đăng nhập Google');
-}
- 
-if (!gapi.client.sheets) {
-throw new Error(
-'Google Sheets API chưa sẵn sàng. Kiểm tra DISCOVERY_DOCS và Google Sheets API.'
-);
-}
- 
-if (monState.spreadsheetId) {
-return monState.spreadsheetId;
-}
- 
-monState.spreadsheetId = MON_SPREADSHEET_ID;
- 
-try {
-const meta = await gapi.client.sheets.spreadsheets.get({
-spreadsheetId: MON_SPREADSHEET_ID
-});
- 
-const exists = (meta.result.sheets || []).some(
-s => s.properties.title === MON_SHEET_TAB
-);
- 
-if (!exists) {
-await gapi.client.sheets.spreadsheets.batchUpdate({
-spreadsheetId: MON_SPREADSHEET_ID,
-resource: {
-requests: [{
-addSheet: {
-properties: {
-title: MON_SHEET_TAB
-}
-}
-}]
-}
-});
- 
-await writeHeaderRow();
-}
-} catch (err) {
-console.error(
-'[Monitoring] Không truy cập được Spreadsheet:',
-MON_SPREADSHEET_ID,
-err
-);
-throw err;
-}
- 
-return monState.spreadsheetId;
+    if (!AppState.isLoggedIn || !gapi.client) {
+        throw new Error('Chưa đăng nhập Google');
+    }
+    
+    if (!gapi.client.sheets) {
+        throw new Error(
+            'Google Sheets API chưa sẵn sàng. Kiểm tra DISCOVERY_DOCS và Google Sheets API.'
+        );
+    }
+    
+    if (monState.spreadsheetId) {
+        return monState.spreadsheetId;
+    }
+    
+    monState.spreadsheetId = MON_SPREADSHEET_ID;
+    
+    try {
+        const meta = await gapi.client.sheets.spreadsheets.get({
+            spreadsheetId: MON_SPREADSHEET_ID
+        });
+        
+        const exists = (meta.result.sheets || []).some(
+            s => s.properties.title === MON_SHEET_TAB
+        );
+        
+        if (!exists) {
+            await gapi.client.sheets.spreadsheets.batchUpdate({
+                spreadsheetId: MON_SPREADSHEET_ID,
+                resource: {
+                    requests: [{
+                        addSheet: {
+                            properties: {
+                                title: MON_SHEET_TAB
+                            }
+                        }
+                    }]
+                }
+            });
+            
+            await writeHeaderRow();
+        }
+    } catch (err) {
+        console.error(
+            '[Monitoring] Không truy cập được Spreadsheet:',
+            MON_SPREADSHEET_ID,
+            err
+        );
+        throw err;
+    }
+    
+    return monState.spreadsheetId;
 }
 
 async function writeHeaderRow() {
