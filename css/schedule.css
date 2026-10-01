@@ -1,0 +1,206 @@
+/* ============================================================
+   SCHEDULE — giao diện module Lịch làm việc
+   Lịch Tháng + bảng ca Tuần (Sáng / Chiều / Đêm / Tăng cường / Họp),
+   thẻ ca, OT, danh sách phân công bên phải.
+   Chỉ dùng các biến màu của base.css (--bg-*, --accent, --border-color...)
+   nên tự đổi theo giao diện Sáng/Tối.
+   ============================================================ */
+
+/* ---------- Bảng màu theo khung giờ (--pc = "R,G,B" để dùng với rgba) ---------- */
+#view-schedule .p-sang, #day-modal .p-sang { --pc: 234, 179, 8; }
+#view-schedule .p-chieu, #day-modal .p-chieu { --pc: 14, 165, 233; }
+#view-schedule .p-dem, #day-modal .p-dem { --pc: 139, 92, 246; }
+#view-schedule .p-khac, #day-modal .p-khac { --pc: 100, 116, 139; }
+:root[data-theme="light"] #view-schedule .p-sang { --pc: 202, 138, 4; }
+:root[data-theme="light"] #view-schedule .p-chieu { --pc: 2, 132, 199; }
+:root[data-theme="light"] #view-schedule .p-dem { --pc: 109, 40, 217; }
+
+#view-schedule {
+    --ot-a: 244, 63, 94;
+    --ot-b: 249, 115, 22;
+    --cover: 16, 185, 129;
+    --swap: 236, 72, 153;
+}
+
+/* ---------- Thanh công cụ: nút chuyển Tháng / Tuần ---------- */
+.sch-toolbar #current-month-display { min-width: 190px; }
+.sch-view-switch { display: inline-flex; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; padding: 3px; gap: 2px; }
+.sch-view-switch button { border: 0; background: transparent; color: var(--text-muted); font-size: 12.5px; font-weight: 600; padding: 6px 12px; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.sch-view-switch button:hover { color: var(--text-main); }
+.sch-view-switch button.active { background: var(--accent); color: #fff; }
+
+/* ---------- Khung chính + chú giải ---------- */
+.schedule-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; align-items: start; }
+.sch-main { padding: 0; overflow: hidden; min-width: 0; }
+
+.sch-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 12px 16px; border-bottom: 1px solid var(--border-color); background: var(--bg-card); font-size: 11.5px; color: var(--text-muted); }
+.sch-legend span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.sch-legend i.sw { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+.sch-legend .sw.sang { background: rgb(234, 179, 8); }
+.sch-legend .sw.chieu { background: rgb(14, 165, 233); }
+.sch-legend .sw.dem { background: rgb(139, 92, 246); }
+.sch-legend .sw.otonly { background: linear-gradient(135deg, rgb(244, 63, 94), rgb(249, 115, 22)); }
+.sch-legend .sw.otadd { background: transparent; border: 1.5px dashed rgb(239, 68, 68); }
+.sch-legend .sw.cover { background: rgb(16, 185, 129); }
+.sch-legend .sw.swap { background: rgb(236, 72, 153); }
+
+/* ---------- Chip khung giờ, loại ca, trạng thái ---------- */
+.sch-period { display: inline-flex; align-items: center; gap: 3px; font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: rgba(var(--pc), .16); color: rgb(var(--pc)); white-space: nowrap; }
+.sch-period i { font-size: 12px; }
+
+.sch-chip { display: inline-flex; align-items: center; gap: 3px; font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px; white-space: nowrap; }
+.sch-chip.own { background: var(--bg-card); color: var(--text-muted); border: 1px solid var(--border-color); font-weight: 600; }
+.sch-chip.cover { background: rgba(var(--cover), .16); color: rgb(var(--cover)); }
+.sch-chip.swap { background: rgba(var(--swap), .16); color: rgb(var(--swap)); }
+:root[data-theme="light"] #view-schedule .sch-chip.cover { color: #059669; }
+:root[data-theme="light"] #view-schedule .sch-chip.swap { color: #be185d; }
+
+.sch-status { font-size: 9.5px; font-weight: 800; padding: 2px 7px; border-radius: 999px; white-space: nowrap; }
+.sch-status.work { background: rgba(16, 185, 129, .16); color: #10b981; }
+.sch-status.off { background: rgba(148, 163, 184, .16); color: var(--text-muted); }
+.sch-status.ot { background: linear-gradient(135deg, rgb(var(--ot-a)), rgb(var(--ot-b))); color: #fff; }
+
+/* ---------- Thẻ ca ---------- */
+.sch-card { border-radius: 10px; padding: 7px 9px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.sch-card.main { background: rgba(var(--pc), .10); border: 1px solid rgba(var(--pc), .22); border-left: 4px solid var(--shift-color, rgb(var(--pc))); }
+.sch-card-top { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.sch-shift-line { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.sch-code { font-size: 15px; font-weight: 800; color: var(--text-main); letter-spacing: .2px; }
+.sch-name { font-size: 11.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sch-time { display: flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 600; color: var(--text-main); }
+.sch-time i { color: var(--text-muted); font-size: 13px; }
+.sch-time.muted { color: var(--text-muted); font-weight: 500; font-style: italic; }
+
+.sch-staff { display: flex; align-items: center; gap: 4px; font-size: 11.5px; padding: 3px 7px; border-radius: 7px; min-width: 0; }
+.sch-staff span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sch-staff.cover { background: rgba(var(--cover), .12); color: #10b981; }
+.sch-staff.swap { background: rgba(var(--swap), .12); color: #ec4899; }
+:root[data-theme="light"] #view-schedule .sch-staff.cover { color: #047857; }
+:root[data-theme="light"] #view-schedule .sch-staff.swap { color: #be185d; }
+
+.sch-task { display: flex; align-items: center; gap: 4px; font-size: 11.5px; padding: 3px 7px; border-radius: 7px; background: rgba(56, 189, 248, .10); border: 1px dashed rgba(56, 189, 248, .45); color: var(--accent); min-width: 0; }
+.sch-task i { font-size: 12px; flex-shrink: 0; }
+.sch-task-k { font-weight: 700; opacity: .8; flex-shrink: 0; }
+.sch-task-v { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.sch-task.empty { background: transparent; border-color: var(--border-color); color: var(--text-muted); }
+.sch-task.empty .sch-task-v { font-weight: 500; }
+
+/* ---------- OT: 2 kiểu hiển thị khác nhau ---------- */
+/* (1) Ngày nghỉ làm tăng cường (cả ca) -> thẻ nổi bật */
+.sch-card.ot-only { background: linear-gradient(135deg, rgba(var(--ot-a), .18), rgba(var(--ot-b), .14)); border: 1px solid rgba(var(--ot-a), .5); box-shadow: 0 2px 10px rgba(var(--ot-a), .12); }
+.sch-ot-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: linear-gradient(135deg, rgb(var(--ot-a)), rgb(var(--ot-b))); color: #fff; white-space: nowrap; }
+.sch-ot-badge i { font-size: 13px; }
+/* (2) Ca chính + làm thêm OT -> thẻ nhỏ nét đứt */
+.sch-ot-add { display: flex; align-items: center; gap: 5px; font-size: 11.5px; padding: 3px 8px; border-radius: 8px; border: 1.5px dashed rgba(239, 68, 68, .6); background: rgba(239, 68, 68, .07); color: #f87171; font-weight: 600; flex-wrap: wrap; }
+.sch-ot-add b { font-weight: 800; }
+.sch-ot-add-time { font-weight: 500; opacity: .85; font-size: 11px; }
+:root[data-theme="light"] #view-schedule .sch-ot-add { color: #dc2626; }
+
+/* ---------- Lịch họp ---------- */
+.sch-meeting { border: 0; width: 100%; border-radius: 8px; padding: 4px 8px; font-size: 11px; display: flex; align-items: center; gap: 5px; cursor: pointer; background: rgba(124, 58, 237, .16); color: #a78bfa; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sch-meeting:hover { filter: brightness(1.15); }
+:root[data-theme="light"] #view-schedule .sch-meeting { color: #6d28d9; }
+.sch-more { text-align: center; font-size: 10.5px; color: var(--text-muted); padding: 2px; }
+
+/* ---------- LỊCH THÁNG ---------- */
+.sch-month-head { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); text-align: center; font-weight: 700; font-size: 12px; padding: 11px 0; background: var(--bg-card); border-bottom: 1px solid var(--border-color); color: var(--text-muted); }
+.sch-month-head div:nth-child(6), .sch-month-head div:nth-child(7) { color: var(--text-main); }
+.sch-month-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.sch-cell { min-height: 150px; padding: 8px; border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 6px; cursor: pointer; overflow: hidden; min-width: 0; transition: background .15s; }
+.sch-cell:nth-child(7n) { border-right: 0; }
+.sch-cell:hover { background: var(--bg-card); }
+.sch-cell.empty { background: var(--bg-primary); cursor: default; min-height: 60px; }
+.sch-cell.empty:hover { background: var(--bg-primary); }
+.sch-cell.is-off { min-height: 92px; }
+.sch-cell.is-off .sch-daynum { color: var(--text-muted); }
+.sch-cell.today { box-shadow: inset 0 0 0 2px var(--accent); }
+.sch-cell.has-meeting { background-image: linear-gradient(135deg, rgba(124, 58, 237, .08), transparent 45%); }
+.sch-cell-head { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.sch-daynum { font-weight: 800; font-size: 15px; color: var(--text-main); line-height: 1; }
+.sch-cell.today .sch-daynum { background: var(--accent); color: #fff; padding: 3px 8px; border-radius: 999px; }
+.sch-cell-body { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.sch-mini { display: none; }
+
+/* ---------- BẢNG CA THEO TUẦN ---------- */
+.sch-week-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.sch-week { display: grid; grid-template-columns: 150px repeat(7, minmax(158px, 1fr)); min-width: 1260px; }
+.sch-wcorner { padding: 14px; font-size: 12px; font-weight: 700; color: var(--text-muted); background: var(--bg-card); border-bottom: 1px solid var(--border-color); border-right: 1px solid var(--border-color); display: flex; align-items: center; position: sticky; left: 0; z-index: 3; }
+.sch-whead { padding: 10px 8px; text-align: center; background: var(--bg-card); border-bottom: 1px solid var(--border-color); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.sch-whead .sch-wdow { font-size: 11.5px; font-weight: 700; color: var(--text-muted); }
+.sch-whead .sch-wnum { font-size: 20px; font-weight: 800; color: var(--text-main); line-height: 1; }
+.sch-whead small { font-size: 10.5px; color: var(--text-muted); margin-top: -2px; }
+.sch-whead.today { background: var(--accent-glow); box-shadow: inset 0 -3px 0 var(--accent); }
+.sch-whead.today .sch-wnum { color: var(--accent); }
+.sch-whead.outside { opacity: .45; }
+
+.sch-rowlabel { position: sticky; left: 0; z-index: 2; background: var(--bg-secondary); border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); padding: 14px 12px; display: flex; align-items: center; gap: 10px; border-left: 4px solid rgb(var(--pc, 100, 116, 139)); }
+.sch-rowlabel i { font-size: 22px; color: rgb(var(--pc, 100, 116, 139)); flex-shrink: 0; }
+.sch-rowlabel b { display: block; font-size: 13.5px; color: var(--text-main); }
+.sch-rowlabel small { display: block; font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.sch-rowlabel.ot { --pc: 244, 63, 94; }
+.sch-rowlabel.ot b { color: #f43f5e; }
+.sch-rowlabel.meet { --pc: 124, 58, 237; }
+
+.sch-wcell { padding: 8px; border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); min-height: 104px; display: flex; flex-direction: column; gap: 5px; cursor: pointer; min-width: 0; transition: background .15s; }
+.sch-wcell:hover { background: var(--bg-card); }
+.sch-wcell.today { background: var(--accent-glow); }
+.sch-wcell.outside { background: var(--bg-primary); cursor: default; opacity: .5; }
+.sch-wcell.outside:hover { background: var(--bg-primary); }
+.sch-wcell.meet { min-height: 64px; }
+.sch-empty-mark { margin: auto; width: 26px; height: 26px; border-radius: 50%; border: 1.5px dashed var(--border-color); opacity: .8; }
+
+/* ---------- DANH SÁCH PHÂN CÔNG / LỊCH HỌP BÊN PHẢI ---------- */
+.schedule-side { padding: 18px; position: sticky; top: 20px; max-height: calc(100vh - 150px); overflow-y: auto; min-width: 0; }
+.side-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-weight: 700; color: var(--text-main); margin-bottom: 12px; }
+.side-head span { display: inline-flex; align-items: center; gap: 8px; }
+.side-head b { min-width: 28px; height: 28px; border-radius: 999px; background: var(--accent-glow); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; }
+.meeting-head { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border-color); }
+.schedule-agenda { display: flex; flex-direction: column; gap: 9px; }
+.agenda-item { width: 100%; text-align: left; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-main); border-radius: 12px; padding: 10px 12px; cursor: pointer; display: grid; gap: 5px; min-width: 0; }
+.agenda-item:hover { border-color: var(--accent); background: var(--accent-glow); }
+.agenda-item b { color: var(--accent); font-size: 12px; }
+.agenda-item span { font-weight: 700; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agenda-item small { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agenda-item.meeting b { color: #a78bfa; }
+.ag-line { display: flex !important; align-items: center; gap: 6px; flex-wrap: wrap; white-space: normal !important; }
+.ag-code { font-weight: 800; }
+.ag-ot-only { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: linear-gradient(135deg, rgb(var(--ot-a)), rgb(var(--ot-b))); color: #fff; }
+.ag-ot-add { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; border: 1.5px dashed rgba(239, 68, 68, .6); color: #f87171; }
+.empty-agenda { color: var(--text-muted); background: var(--bg-primary); border: 1px dashed var(--border-color); border-radius: 12px; padding: 14px; font-size: 12.5px; }
+
+/* ---------- POPUP HIỆU CHỈNH NGÀY ---------- */
+.day-modal-content { max-width: 500px; }
+.day-modal-content .input-group label { width: 124px; flex-shrink: 0; }
+.day-modal-content .input-group .form-select { margin-top: 0; }
+.day-modal-content .form-select:disabled { opacity: .55; cursor: not-allowed; }
+.modal-hint { display: block; margin: -8px 0 14px 134px; font-size: 11.5px; color: var(--text-muted); line-height: 1.45; }
+#modal-preview { display: grid; gap: 4px; }
+#modal-trade-group, #modal-help-group { display: none; }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1180px) {
+    .schedule-layout { grid-template-columns: 1fr; }
+    .schedule-side { position: static; max-height: none; }
+}
+@media (max-width: 768px) {
+    .sch-toolbar #current-month-display { min-width: 0; font-size: 14px; }
+    .sch-legend { gap: 6px 12px; padding: 10px 12px; }
+    .modal-hint { margin-left: 0; }
+    .day-modal-content .input-group { flex-wrap: wrap; }
+    .day-modal-content .input-group label { width: 100%; }
+}
+/* Điện thoại: ô lịch tháng chỉ hiện bản rút gọn (mã ca, OT, biểu tượng) — bấm vào ô để xem/sửa chi tiết,
+   hoặc chuyển sang chế độ Tuần để xem đầy đủ. */
+@media (max-width: 640px) {
+    .sch-cell { min-height: 78px; padding: 5px 3px; gap: 4px; align-items: center; }
+    .sch-cell.is-off { min-height: 62px; }
+    .sch-cell-head { flex-direction: column; gap: 3px; }
+    .sch-cell .sch-status { display: none; }
+    .sch-cell-body { display: none; }
+    .sch-mini { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 3px; }
+    .sch-mini-chip { font-size: 10px; font-weight: 800; padding: 1px 5px; border-radius: 6px; background: rgba(var(--pc), .18); color: rgb(var(--pc)); }
+    .sch-mini-chip.ot { background: linear-gradient(135deg, rgb(var(--ot-a)), rgb(var(--ot-b))); color: #fff; }
+    .sch-mini-ico { font-size: 12px; color: var(--text-muted); }
+    .sch-daynum { font-size: 13px; }
+    .sch-month-head { font-size: 11px; padding: 9px 0; }
+}
