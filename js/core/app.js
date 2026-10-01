@@ -187,6 +187,11 @@ window.switchView = function (viewName) {
     }
 
     if (viewName === 'schedule' && typeof window.renderCalendar === 'function') window.renderCalendar();
+    if (viewName === 'schedule' && typeof window.loadScheduleFromDrive === 'function') {
+        window.loadScheduleFromDrive().catch(err => {
+            console.error('[Schedule] Không load được lịch từ Drive khi chuyển sang schedule:', err);
+        });
+    }
     if (viewName === 'settings' && typeof renderSettingsUI === 'function') renderSettingsUI();
     if (viewName === 'productivity' && typeof loadProductivityForDate === 'function') loadProductivityForDate();
     if (viewName === 'dashboard' && typeof window.updateDashboard === 'function') window.updateDashboard();
@@ -200,6 +205,13 @@ window.showApp = function () {
     if (shell) shell.style.display = 'block';
     const view = (window.location.hash || '').replace('#', '') || AppState.currentView || 'dashboard';
     if (VIEW_META[view]) window.switchView(view);
+
+    // BẮT BUỘC: load lịch khi app hiện ra và Google đã login
+    if (typeof window.loadScheduleFromDrive === 'function') {
+        window.loadScheduleFromDrive().catch(err => {
+            console.error('[Schedule] Không load được lịch từ Drive khi mở app:', err);
+        });
+    }
 };
 
 window.showLogin = function (message) {
