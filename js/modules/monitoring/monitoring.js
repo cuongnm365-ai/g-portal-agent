@@ -794,23 +794,11 @@ function autoExtract() {
     const ticketMatch = text.match(/Mã Ticket[:\s]+([^\s.]+)/i);
     if (ticketMatch) setValue('mon-ticket', ticketMatch[1].trim());
 
-    // SR ID (dạng SHI-DND063880-HTKTPM300926HW8A — có dấu gạch ngang, không có dấu chấm)
-    let srCode = '';
-    const srMatch = text.match(/Mã SR[:\s]+([A-Za-z0-9-]+)/i);
-    if (srMatch) srCode = srMatch[1].trim();
-    if (!srCode) {
-        const fb = text.match(/\b(SHI-[A-Z0-9-]+)\b/i);
-        if (fb) srCode = fb[1];
-    }
+    const identifiers = window.extractMonitoringIdentifiers(text);
+    const srCode = identifiers.srCode;
+    const contract = identifiers.contractNo;
+    const phone = identifiers.phone;
     if (srCode) setValue('mon-sr', srCode);
-
-    // Hợp đồng (9 ký tự, 2 ký tự đầu là mã tỉnh) + SĐT (10 số bắt đầu bằng 0)
-    let contract = '', phone = '';
-    text.split(/\s+/).forEach(raw => {
-        const tok = raw.replace(/[^A-Za-z0-9]/g, '');
-        if (!contract && tok.length === 9 && MA_TINH_LIST.includes(tok.slice(0, 2).toUpperCase())) contract = tok.toUpperCase();
-        if (!phone && tok.length === 10 && tok.startsWith('0') && /^\d+$/.test(tok)) phone = tok;
-    });
 
     if (contract) {
         setValue('mon-contract', contract);
@@ -821,6 +809,25 @@ function autoExtract() {
     if (!val('mon-received-time')) setValue('mon-received-time', nowLocalInput());
     updateDeepLinks();
 }
+
+// Shared identifier extraction for other modules that ingest pasted alert text.
+window.extractMonitoringIdentifiers = function (text) {
+    const whole = String(text || '');
+    let srCode = '';
+    const srMatch = whole.match(/Mã SR[:\s]+([A-Za-z0-9-]+)/i);
+    if (srMatch) srCode = srMatch[1].trim();
+    if (!srCode) {
+        const fallback = whole.match(/\b(SHI-[A-Z0-9-]+)\b/i);
+        if (fallback) srCode = fallback[1];
+    }
+    let contractNo = '', phone = '';
+    whole.split(/\s+/).forEach(raw => {
+        const token = raw.replace(/[^A-Za-z0-9]/g, '');
+        if (!contractNo && token.length === 9 && MA_TINH_LIST.includes(token.slice(0, 2).toUpperCase())) contractNo = token.toUpperCase();
+        if (!phone && token.length === 10 && token.startsWith('0') && /^\d+$/.test(token)) phone = token;
+    });
+    return { srCode, contractNo, phone };
+};
 
 function lookupRegionByContract(contractNo) {
     if (!contractNo || contractNo.length < 2) return;

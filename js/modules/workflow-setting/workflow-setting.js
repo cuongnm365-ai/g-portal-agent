@@ -54,7 +54,7 @@
     const SIMPLE_LISTS = [
         { key: 'resolutions',       group: 'common',    title: 'Phương án (Resolution)',     icon: 'bx-check-shield',       ph: 'Tên phương án',                          header: 'Phương án',               file: 'PhuongAn' },
         { key: 'sources',           group: 'complaint', title: 'Nguồn tiếp nhận khiếu nại',  icon: 'bx-inbox',              ph: 'VD: Email, MXH (Alert), Hotline',        header: 'Nguồn tiếp nhận',         file: 'NguonTiepNhan' },
-        { key: 'fbAccounts',        group: 'complaint', title: 'Nick FB CSKH',               icon: 'bxl-facebook-circle',   ph: 'Tên nick Facebook CSKH',                 header: 'Nick FB CSKH',            file: 'NickFB_CSKH' },
+        { key: 'fbAccounts',        group: 'complaint', title: 'Nick FB CSKH',               icon: 'bxl-facebook-circle',   ph: 'Nick Facebook (KV | Nick)',               header: 'Nick FB CSKH',            file: 'NickFB_CSKH' },
         { key: 'levels',            group: 'complaint', title: 'Cấp độ khiếu nại',           icon: 'bx-error-circle',       ph: 'VD: Cấp 1, Cấp 2...',                    header: 'Cấp độ khiếu nại',        file: 'CapDoKhieuNai' },
         { key: 'handlingUnits',     group: 'complaint', title: 'Đơn vị xử lý',               icon: 'bx-buildings',          ph: 'VD: SOC HTTC, SOC phối hợp...',          header: 'Đơn vị xử lý',            file: 'DonViXuLy' },
         { key: 'vouchers',          group: 'complaint', title: 'Voucher',                    icon: 'bx-gift',               ph: 'Tên voucher',                            header: 'Voucher',                 file: 'Voucher' },
@@ -111,6 +111,9 @@
         const st = document.createElement('style');
         st.id = 'wf-style';
         st.textContent = `
+            #view-workflow_setting { font-family:'Inter', Arial, sans-serif; font-size:14px; line-height:1.5; }
+            #view-workflow_setting button, #view-workflow_setting input, #view-workflow_setting label { font-family:inherit; }
+            #view-workflow_setting .wf-card-title { font-family:inherit; font-size:15px; line-height:1.4; font-weight:600; }
             #view-workflow_setting .wf-head { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
             #view-workflow_setting .wf-head h3 { font-size:15px; display:flex; align-items:center; gap:8px; }
             #view-workflow_setting .wf-head-actions { display:flex; gap:8px; }
@@ -407,9 +410,9 @@
         if (!list) return;
         const q = searchValue(key);
         setBadge(key, (wf()[key] || []).length);
-        const items = (wf()[key] || []).filter(x => !q || norm(x.name).includes(q));
+        const items = (wf()[key] || []).filter(x => !q || norm(`${x.kv || ''} ${x.name}`).includes(q));
         list.innerHTML = items.length
-            ? items.map(x => `<li class="data-item"><label><input type="checkbox" class="custom-chk wf-chk" data-key="${key}" data-kind="item" data-name="${enc(x.name)}"><span>${esc(x.name)}</span></label></li>`).join('')
+            ? items.map(x => `<li class="data-item"><label><input type="checkbox" class="custom-chk wf-chk" data-key="${key}" data-kind="item" data-name="${enc(x.name)}" data-kv="${enc(x.kv || '')}"><span>${esc(x.kv ? `${x.kv} · ${x.name}` : x.name)}</span></label></li>`).join('')
             : `<li class="wf-empty">${q ? 'Không tìm thấy.' : 'Chưa có dữ liệu.'}</li>`;
         toggleDelBtn(key);
     }
@@ -420,7 +423,12 @@
         const names = parseMulti(input.value, false);
         if (!names.length) return alert('Vui lòng nhập giá trị.');
         const arr = wf()[key];
-        names.forEach(n => { if (!arr.find(x => same(x.name, n))) arr.push({ name: n }); });
+        names.forEach(value => {
+            const match = key === 'fbAccounts' ? value.match(/^(.+?)\s*\|\s*(.+)$/) : null;
+            const kv = match ? S(match[1]) : '';
+            const name = match ? S(match[2]) : value;
+            if (name && !arr.find(x => same(x.name, name) && same(x.kv || '', kv))) arr.push(Object.assign({ name }, kv ? { kv } : {}));
+        });
         input.value = '';
         commit(key);
     }
@@ -567,8 +575,8 @@
         const d = wf();
 
         if (cfg.kind === 'simple') {
-            const names = new Set(checked.map(c => dec(c.dataset.name).toLowerCase()));
-            d[key] = d[key].filter(x => !names.has(x.name.toLowerCase()));
+            const names = new Set(checked.map(c => `${dec(c.dataset.kv || '')}\u0000${dec(c.dataset.name)}`.toLowerCase()));
+            d[key] = d[key].filter(x => !names.has(`${x.kv || ''}\u0000${x.name}`.toLowerCase()));
         } else if (cfg.kind === 'tree') {
             const parents = new Set();
             const kids = [];
@@ -614,7 +622,7 @@
         const cfg = REG[key];
         const d = wf();
         if (cfg.kind === 'simple') {
-            downloadAoa([[cfg.header]].concat(d[key].map(x => [x.name])), 'Data', cfg.file);
+            downloadAoa([[cfg.header]].concat(d[key].map(x => [key === 'fbAccounts' && x.kv ? `${x.kv} | ${x.name}` : x.name])), 'Data', cfg.file);
         } else if (cfg.kind === 'tree') {
             const rows = [cfg.headers];
             d[key].forEach(x => {
@@ -664,8 +672,11 @@
         const arr = wf()[key];
         let n = 0;
         rows.forEach(r => {
-            const name = S(r[0]);
-            if (name && !arr.find(x => same(x.name, name))) { arr.push({ name }); n++; }
+            const value = S(r[0]);
+            const match = key === 'fbAccounts' ? value.match(/^(.+?)\s*\|\s*(.+)$/) : null;
+            const kv = match ? S(match[1]) : '';
+            const name = match ? S(match[2]) : value;
+            if (name && !arr.find(x => same(x.name, name) && same(x.kv || '', kv))) { arr.push(Object.assign({ name }, kv ? { kv } : {})); n++; }
         });
         return n;
     }

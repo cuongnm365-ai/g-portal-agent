@@ -18,7 +18,7 @@ const VIEW_META = {
     email: { title: 'Soạn Email', subtitle: 'Khởi tạo nhanh nội dung email gửi khách hàng theo mẫu chuẩn' },
     settings: { title: 'Cài Đặt', subtitle: 'Thiết lập ca làm việc, nhân sự, PCCV, tham số KPI & mẫu Email' },
     monitoring: { title: 'Giám Sát', subtitle: 'Theo dõi, nhập dữ liệu request layer 2' },
-    complaint: { title: 'Complaint', subtitle: 'Công cụ đang phát triển' },
+    complaint: { title: 'Complaint Management', subtitle: 'Theo dõi, phân loại và xử lý khiếu nại nhanh' },
     workflow_setting: { title: 'Workflow Setting', subtitle: 'Thiết lập trường dữ liệu cho Giám Sát và Complaint' }
 };
 
@@ -195,6 +195,7 @@ window.switchView = function (viewName) {
     if (viewName === 'dashboard' && typeof window.updateDashboard === 'function') window.updateDashboard();
     if (viewName === 'email' && typeof window.refreshEmailStatsIfActive === 'function') window.refreshEmailStatsIfActive();
     if (viewName === 'monitoring' && typeof window.loadMonitoringData === 'function') window.loadMonitoringData();
+    if (viewName === 'complaint' && typeof window.loadComplaintPage === 'function') window.loadComplaintPage();
     if (viewName === 'workflow_setting' && typeof renderWorkflowSettingsUI === 'function') renderWorkflowSettingsUI();
 };
 
