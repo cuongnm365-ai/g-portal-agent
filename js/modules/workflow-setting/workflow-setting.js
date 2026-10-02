@@ -131,6 +131,14 @@
             #view-workflow_setting .wf-prov-head small { color:var(--text-muted); }
             #view-workflow_setting .wf-chips { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 0 24px; }
             #view-workflow_setting .wf-chip { display:inline-flex; align-items:center; gap:6px; background:var(--bg-card); border:1px solid var(--border-color); border-radius:999px; padding:3px 10px; font-size:12px; color:var(--text-muted); cursor:pointer; }
+            #view-workflow_setting .wf-card-title { cursor:pointer; user-select:none; flex:1; min-width:180px; }
+            #view-workflow_setting .wf-chev { transition:transform .2s; color:var(--text-muted); }
+            #view-workflow_setting .wf-card:not(.wf-collapsed) .wf-chev { transform:rotate(90deg); }
+            #view-workflow_setting .wf-badge { font-size:11.5px; font-weight:600; color:var(--accent); background:var(--accent-glow); padding:2px 10px; border-radius:999px; }
+            #view-workflow_setting .wf-card.wf-collapsed .wf-body { display:none; }
+            #view-workflow_setting .wf-card.wf-collapsed .wf-head { margin-bottom:0; }
+            #view-workflow_setting .wf-kids { padding:2px 14px 12px 38px; display:flex; flex-direction:column; gap:2px; }
+            #view-workflow_setting .wf-kid { display:flex; align-items:center; gap:10px; font-size:13px; color:var(--text-muted); padding:4px 0; cursor:pointer; }
             #view-workflow_setting .wf-child-count { margin-left:auto; font-size:11.5px; font-weight:500; color:var(--text-muted); }
         `;
         document.head.appendChild(st);
@@ -141,7 +149,7 @@
     // ======================================================================
     function headHtml(key, title, icon) {
         return `<div class="wf-head">
-            <h3><i class='bx ${icon}'></i> ${esc(title)}</h3>
+            <h3 class="wf-card-title" data-act="toggle-card" data-key="${key}"><i class='bx bx-chevron-right wf-chev'></i> <i class='bx ${icon}'></i> ${esc(title)} <span class="wf-badge" id="wf-badge-${key}">0</span></h3>
             <div class="wf-head-actions">
                 <button type="button" class="btn-ghost wf-mini" data-act="export" data-key="${key}"><i class='bx bx-download'></i> Export</button>
                 <label for="wf-file-${key}" class="btn-ghost wf-mini"><i class='bx bx-upload'></i> Import</label>
@@ -159,20 +167,23 @@
     }
 
     function simpleCardHtml(c) {
-        return `<div class="ai-card wf-card">
+        return `<div class="ai-card wf-card" id="wf-card-${c.key}">
             ${headHtml(c.key, c.title, c.icon)}
+            <div class="wf-body">
             <div class="input-group">
                 <input type="text" id="wf-in-${c.key}" placeholder="${esc(c.ph)}">
                 <button type="button" class="btn-primary" data-act="add" data-key="${c.key}"><i class='bx bx-plus'></i> Thêm</button>
             </div>
             ${searchHtml(c.key)}
             <ul id="wf-list-${c.key}" class="data-list"></ul>
+            </div>
         </div>`;
     }
 
     function treeCardHtml(c) {
-        return `<div class="ai-card span-2 wf-card">
+        return `<div class="ai-card span-2 wf-card" id="wf-card-${c.key}">
             ${headHtml(c.key, c.title, c.icon)}
+            <div class="wf-body">
             <div class="input-group">
                 <input type="text" id="wf-p-${c.key}" list="wf-dl-${c.key}" placeholder="${esc(c.parentLabel)} — chọn hoặc nhập mới">
                 <datalist id="wf-dl-${c.key}"></datalist>
@@ -180,14 +191,16 @@
                 <button type="button" class="btn-primary" data-act="tree-add" data-key="${c.key}"><i class='bx bx-plus'></i> Thêm</button>
             </div>
             ${searchHtml(c.key)}
-            <div id="wf-list-${c.key}" class="workflow-tree wf-scroll"></div>
+            <div id="wf-list-${c.key}" class="wf-scroll"></div>
+            </div>
         </div>`;
     }
 
     function regionCardHtml() {
         const k = REGION_KEY;
-        return `<div class="ai-card span-2 wf-card">
+        return `<div class="ai-card span-2 wf-card" id="wf-card-${k}">
             ${headHtml(k, 'Dữ liệu Vùng miền', 'bx-map-pin')}
+            <div class="wf-body">
             <div class="input-group" style="margin-bottom:8px;">
                 <input type="text" id="wf-r-region" list="wf-dl-regions" placeholder="Khu Vực">
                 <datalist id="wf-dl-regions"></datalist>
@@ -200,6 +213,7 @@
             </div>
             ${searchHtml(k)}
             <div id="wf-list-${k}" class="wf-scroll"></div>
+            </div>
         </div>`;
     }
 
@@ -227,18 +241,39 @@
             <div class="settings-grid">${complaint.join('')}</div>`;
 
         bindEvents(sec);
+        Object.keys(REG).forEach(applyCollapse);
         renderWorkflowSettingsUI();
     }
 
     // ======================================================================
     // SỰ KIỆN (gắn 1 lần duy nhất trên section)
     // ======================================================================
+    // Trạng thái thu gọn/mở rộng từng khối — nhớ qua localStorage, mặc định THU GỌN
+    const COLLAPSE_KEY = 'gportal_wf_open_cards';
+    function openSet() {
+        try { return new Set(JSON.parse(localStorage.getItem(COLLAPSE_KEY) || '[]')); } catch (e) { return new Set(); }
+    }
+    function applyCollapse(key) {
+        const card = $('wf-card-' + key);
+        if (card) card.classList.toggle('wf-collapsed', !openSet().has(key));
+    }
+    function setCardOpen(key, open) {
+        const s = openSet();
+        if (open) s.add(key); else s.delete(key);
+        try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...s])); } catch (e) {}
+        applyCollapse(key);
+    }
+    function setBadge(key, n) {
+        const el = $('wf-badge-' + key);
+        if (el) el.textContent = n;
+    }
+
     function bindEvents(sec) {
         sec.addEventListener('click', onClick);
         sec.addEventListener('change', onChange);
         sec.addEventListener('input', (e) => {
             const key = e.target && e.target.dataset ? e.target.dataset.search : null;
-            if (key) renderKey(key);
+            if (key) { if (e.target.value) setCardOpen(key, true); renderKey(key); }
         });
         sec.addEventListener('keydown', (e) => {
             if (e.key !== 'Enter' || !e.target.matches('.input-group input')) return;
@@ -248,6 +283,8 @@
     }
 
     function onClick(e) {
+        const tg = e.target.closest('[data-act="toggle-card"]');
+        if (tg) { setCardOpen(tg.dataset.key, !openSet().has(tg.dataset.key)); return; }
         const btn = e.target.closest('button[data-act]');
         if (!btn) return;
         const key = btn.dataset.key;
@@ -369,6 +406,7 @@
         const list = $('wf-list-' + key);
         if (!list) return;
         const q = searchValue(key);
+        setBadge(key, (wf()[key] || []).length);
         const items = (wf()[key] || []).filter(x => !q || norm(x.name).includes(q));
         list.innerHTML = items.length
             ? items.map(x => `<li class="data-item"><label><input type="checkbox" class="custom-chk wf-chk" data-key="${key}" data-kind="item" data-name="${enc(x.name)}"><span>${esc(x.name)}</span></label></li>`).join('')
@@ -394,25 +432,29 @@
         const q = searchValue(key);
         const data = wf()[key] || [];
 
+        setBadge(key, data.length);
         const dl = $('wf-dl-' + key);
         if (dl) dl.innerHTML = data.map(x => `<option value="${esc(x.type)}"></option>`).join('');
 
+        // Giữ nguyên trạng thái mở/đóng của từng mục cha khi vẽ lại
+        const openParents = new Set(Array.from(list.querySelectorAll('details[open]')).map(d => d.dataset.p));
         let html = '';
         data.forEach(item => {
             const parentHit = q && norm(item.type).includes(q);
             const kids = item.subTypes.filter(s => !q || parentHit || norm(s).includes(q));
             if (q && !parentHit && !kids.length) return;
-            html += `<div class="wf-parent-node">
-                <div class="wf-parent-header">
+            const isOpen = q || openParents.has(enc(item.type));
+            html += `<details class="wf-region" data-p="${enc(item.type)}" ${isOpen ? 'open' : ''}>
+                <summary>
                     <input type="checkbox" class="custom-chk wf-chk" data-key="${key}" data-kind="parent" data-p="${enc(item.type)}">
-                    <span>${esc(item.type)}</span><span class="wf-child-count">${item.subTypes.length} mục</span>
-                </div>
-                <div class="wf-child-list">${kids.map(s => `
-                    <div class="wf-child-item">
+                    <span>${esc(item.type)}</span><span class="wf-count">${item.subTypes.length} mục</span>
+                </summary>
+                <div class="wf-kids">${kids.length ? kids.map(s => `
+                    <label class="wf-kid">
                         <input type="checkbox" class="custom-chk wf-chk" data-key="${key}" data-kind="child" data-p="${enc(item.type)}" data-c="${enc(s)}">
                         <span>${esc(s)}</span>
-                    </div>`).join('')}</div>
-            </div>`;
+                    </label>`).join('') : '<div class="wf-empty" style="padding:8px;">Chưa có mục cấp 2.</div>'}</div>
+            </details>`;
         });
         list.innerHTML = html || `<div class="wf-empty">${q ? 'Không tìm thấy.' : 'Chưa có dữ liệu.'}</div>`;
         toggleDelBtn(key);
@@ -451,6 +493,7 @@
         if (!box) return;
         const q = searchValue(REGION_KEY);
         const regs = wf().regions || [];
+        setBadge(REGION_KEY, regs.length + ' tỉnh');
 
         const dl = $('wf-dl-regions');
         if (dl) dl.innerHTML = [...new Set(regs.map(r => r.region))].map(r => `<option value="${esc(r)}"></option>`).join('');
