@@ -1,684 +1,689 @@
 /**
- * workflow-setting.js - Workflow Settings Module
- * Quản lý: Phân loại RQL2, Vùng miền, Phương án (dành cho module Giám Sát, Complaint)
+ * workflow-setting.js - Workflow Settings Module (BẢN VIẾT LẠI TOÀN BỘ)
+ *
+ * Quản lý các danh mục động dùng cho module Giám Sát và Complaint (sau này).
  *
  * ============================================================================
- * BẢN CẬP NHẬT (viết lại toàn bộ file)
+ * NHÓM DỮ LIỆU
  * ============================================================================
- * 1) DỮ LIỆU VÙNG MIỀN GỌN HƠN: trước đây mỗi TỈNH là 1 khối riêng, tên Khu vực
- *    lặp lại nhiều lần (VD "01.Thập Đại Đô Thị" xuất hiện cho cả HN lẫn QN) nên
- *    danh sách rất dài. Giờ gom theo cấp:  Khu vực  >  Tỉnh/Thành  >  Chi nhánh.
- *    - Mỗi Khu vực là 1 khối THU GỌN mặc định (bấm để mở), hiện sẵn số tỉnh /
- *      số chi nhánh bên cạnh.
- *    - Chi nhánh hiển thị dạng "chip" xếp ngang thay vì mỗi dòng 1 chi nhánh.
- *    - Có ô tìm kiếm + nút "Mở hết / Thu hết".
- *    - Phân loại RQL2 cũng dùng cách hiển thị thu gọn tương tự.
- *    Cấu trúc dữ liệu lưu trên Drive KHÔNG đổi (regions: [{region, provinceCode,
- *    provinceName, branches[]}]) nên dữ liệu cũ dùng được ngay.
- * 2) IMPORT EXCEL CHẠY ĐƯỢC VỚI NHIỀU KIỂU TIÊU ĐỀ: trước đây tiêu đề cột phải
- *    khớp TUYỆT ĐỐI (đúng chữ hoa/thường, đúng dấu cách) và gặp ô dạng số là
- *    báo lỗi/bỏ qua im lặng. Giờ:
- *    - So khớp tiêu đề không phân biệt hoa/thường, dấu tiếng Việt, khoảng trắng,
- *      dấu "/" ("Mã Tỉnh/Thành", "ma tinh", "Tỉnh / Thành"... đều nhận).
- *    - Mọi ô được ép về chuỗi (SĐT/mã dạng số không gây lỗi).
- *    - Ô Khu vực / Mã tỉnh / Tên tỉnh để trống (ô gộp trong Excel) sẽ tự lấy giá
- *      trị của dòng phía trên.
- *    - Ô Chi nhánh cho phép nhiều chi nhánh cách nhau bằng dấu phẩy.
- *    - Import xong luôn hiện thông báo kết quả (thêm bao nhiêu, bỏ qua bao nhiêu,
- *      và nếu không nhận ra cột nào thì liệt kê các tiêu đề đọc được).
+ * Dùng chung Giám Sát + Complaint:
+ *   - regions        : Vùng miền  (Khu vực > Tỉnh/Thành > Chi nhánh)
+ *   - requestTypes   : Phân loại RQL2 (cấp 1 > cấp 2)
+ *   - resolutions    : Phương án
+ * Dành cho Complaint (MỚI):
+ *   - sources           : Nguồn tiếp nhận khiếu nại
+ *   - fbAccounts        : Nick FB CSKH
+ *   - levels            : Cấp độ khiếu nại
+ *   - handlingUnits     : Đơn vị xử lý
+ *   - vouchers          : Voucher
+ *   - results           : Kết quả
+ *   - complaintServices : Loại dịch vụ khiếu nại
+ *   - srTypes           : Loại yêu cầu SR (cấp 1 > cấp 2, phụ thuộc như Vùng miền)
+ *
+ * Cấu trúc dữ liệu lưu trên Drive (workflow_settings.json) — GIỮ NGUYÊN cấu
+ * trúc cũ của requestTypes/regions/resolutions nên monitoring.js vẫn chạy:
+ *   requestTypes / srTypes : [{ type, subTypes: [] }]
+ *   regions                : [{ region, provinceCode, provinceName, branches: [] }]
+ *   danh sách đơn giản     : [{ name }]
+ *
+ * ============================================================================
+ * THAY ĐỔI SO VỚI BẢN CŨ
+ * ============================================================================
+ * 1) Giao diện trang được JS tự dựng vào #view-workflow_setting (KHÔNG cần sửa
+ *    index.html): thêm danh mục mới chỉ cần khai báo trong SIMPLE_LISTS /
+ *    TREE_LISTS bên dưới.
+ * 2) Dữ liệu Vùng miền gọn hơn: gom theo Khu vực, mỗi khu vực là 1 khối thu
+ *    gọn/mở rộng, có ô tìm kiếm — không còn lặp tên khu vực cho từng tỉnh.
+ * 3) Sửa lỗi Import Excel Vùng miền: trước đây dùng (cell || '').trim() nên
+ *    lỗi khi ô là số, và bắt buộc tiêu đề cột phải khớp từng ký tự. Giờ nhận
+ *    diện cột linh hoạt (không phân biệt hoa thường/dấu/khoảng trắng), tự điền
+ *    xuống các ô gộp (merge cell) bị trống.
+ * 3) Import cho danh sách phụ thuộc (RQL2, Loại YC SR) hỗ trợ 2 kiểu file:
+ *      - 2 cột:  [Cấp 1 | Cấp 2]  (file do chính tool Export ra)
+ *      - Ma trận: mỗi CỘT là 1 mục cấp 1 (ở dòng tiêu đề), các ô bên dưới là
+ *        mục cấp 2 — đúng như cách bảng theo dõi khiếu nại trên Excel đang làm.
  * ============================================================================
  */
 
-window.workflowSettings = {
-    requestTypes: [], // { type: string, subTypes: string[] }
-    regions: [],      // { region, provinceCode, provinceName, branches: string[] }
-    resolutions: []   // { name }
-};
+(function () {
+    'use strict';
 
-// Trạng thái giao diện (không lưu lên Drive)
-const wfUi = {
-    openReg: new Set(),
-    openReq: new Set(),
-    filterReg: '',
-    filterReq: ''
-};
+    // ======================================================================
+    // KHAI BÁO DANH MỤC
+    // ======================================================================
+    const SIMPLE_LISTS = [
+        { key: 'resolutions',       group: 'common',    title: 'Phương án (Resolution)',     icon: 'bx-check-shield',       ph: 'Tên phương án',                          header: 'Phương án',               file: 'PhuongAn' },
+        { key: 'sources',           group: 'complaint', title: 'Nguồn tiếp nhận khiếu nại',  icon: 'bx-inbox',              ph: 'VD: Email, MXH (Alert), Hotline',        header: 'Nguồn tiếp nhận',         file: 'NguonTiepNhan' },
+        { key: 'fbAccounts',        group: 'complaint', title: 'Nick FB CSKH',               icon: 'bxl-facebook-circle',   ph: 'Tên nick Facebook CSKH',                 header: 'Nick FB CSKH',            file: 'NickFB_CSKH' },
+        { key: 'levels',            group: 'complaint', title: 'Cấp độ khiếu nại',           icon: 'bx-error-circle',       ph: 'VD: Cấp 1, Cấp 2...',                    header: 'Cấp độ khiếu nại',        file: 'CapDoKhieuNai' },
+        { key: 'handlingUnits',     group: 'complaint', title: 'Đơn vị xử lý',               icon: 'bx-buildings',          ph: 'VD: SOC HTTC, SOC phối hợp...',          header: 'Đơn vị xử lý',            file: 'DonViXuLy' },
+        { key: 'vouchers',          group: 'complaint', title: 'Voucher',                    icon: 'bx-gift',               ph: 'Tên voucher',                            header: 'Voucher',                 file: 'Voucher' },
+        { key: 'results',           group: 'complaint', title: 'Kết quả',                    icon: 'bx-check-circle',       ph: 'VD: Đã xử lý, Không xử lý được...',      header: 'Kết quả',                 file: 'KetQua' },
+        { key: 'complaintServices', group: 'complaint', title: 'Loại dịch vụ khiếu nại',     icon: 'bx-category',           ph: 'VD: Internet, Truyền hình...',           header: 'Loại dịch vụ khiếu nại',  file: 'LoaiDichVuKhieuNai' }
+    ];
 
-// ==================== TIỆN ÍCH ====================
-function wfEsc(value) {
-    return String(value == null ? '' : value).replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
-}
+    const TREE_LISTS = [
+        { key: 'requestTypes', group: 'common',    title: 'Phân loại RQL2',   icon: 'bx-list-ul', parentLabel: 'Loại RQL2 (cấp 1)',      childLabel: 'Phân loại (cấp 2)',     headers: ['Loại RQL2', 'Phân loại'],                         file: 'RQL2_PhanLoai' },
+        { key: 'srTypes',      group: 'complaint', title: 'Loại yêu cầu SR',  icon: 'bx-support', parentLabel: 'Loại YC SR (cấp 1)',     childLabel: 'Loại YC SR (cấp 2)',    headers: ['Loại YC SR (cấp 1)', 'Loại YC SR (cấp 2)'],       file: 'SR_LoaiYeuCau' }
+    ];
 
-// Chuẩn hoá để so khớp: bỏ dấu tiếng Việt, hạ chữ thường, bỏ mọi ký tự không phải chữ/số
-function wfNorm(value) {
-    return String(value == null ? '' : value)
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .replace(/đ/g, 'd').replace(/Đ/g, 'd')
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, '');
-}
+    const REGION_KEY = 'regions';
+    const REGION_HEADERS = ['Khu Vực', 'Mã Tỉnh/Thành', 'Tỉnh / Thành', 'Chi Nhánh'];
 
-// Lấy giá trị 1 cột theo danh sách tên tiêu đề chấp nhận được (đã chuẩn hoá)
-function wfPick(row, aliases) {
-    const keys = Object.keys(row);
-    for (const k of keys) {
-        if (aliases.includes(wfNorm(k))) return String(row[k] == null ? '' : row[k]).trim();
+    const REG = {};
+    SIMPLE_LISTS.forEach(c => { REG[c.key] = Object.assign({ kind: 'simple' }, c); });
+    TREE_LISTS.forEach(c => { REG[c.key] = Object.assign({ kind: 'tree' }, c); });
+    REG[REGION_KEY] = { kind: 'region', key: REGION_KEY, file: 'DuLieuVungMien' };
+
+    function defaultWF() {
+        const o = { requestTypes: [], regions: [], srTypes: [] };
+        SIMPLE_LISTS.forEach(c => { o[c.key] = []; });
+        return o;
     }
-    return '';
-}
 
-function wfBindIfExists(id, eventName, handler) {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener(eventName, handler);
-}
+    window.workflowSettings = Object.assign(defaultWF(), window.workflowSettings || {});
 
-function wfInjectStyle() {
-    if (document.getElementById('wf-style')) return;
-    const st = document.createElement('style');
-    st.id = 'wf-style';
-    st.textContent = `
-#view-workflow_setting .workflow-tree { display:flex; flex-direction:column; gap:8px; }
-#view-workflow_setting .wf-toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
-#view-workflow_setting .wf-toolbar input { flex:1; min-width:180px; padding:8px 12px; border-radius:9px; border:1px solid var(--border-color); background:var(--bg-primary); color:var(--text-main); font-size:13px; outline:none; }
-#view-workflow_setting .wf-toolbar input:focus { border-color: var(--accent); }
-#view-workflow_setting .wf-acc { background: var(--bg-card); border:1px solid var(--border-color); border-radius:10px; overflow:hidden; }
-#view-workflow_setting .wf-acc > summary { list-style:none; cursor:pointer; display:flex; align-items:center; gap:10px; padding:10px 14px; font-weight:600; font-size:13.5px; color:var(--text-main); user-select:none; }
-#view-workflow_setting .wf-acc > summary::-webkit-details-marker { display:none; }
-#view-workflow_setting .wf-acc > summary::after { content:'\\25BE'; margin-left:auto; color:var(--text-muted); transition:transform .15s; }
-#view-workflow_setting .wf-acc:not([open]) > summary::after { transform:rotate(-90deg); }
-#view-workflow_setting .wf-acc > summary:hover { background: var(--accent-glow); }
-#view-workflow_setting .wf-count { font-weight:500; font-size:11.5px; color:var(--text-muted); background:var(--bg-primary); border:1px solid var(--border-color); padding:2px 8px; border-radius:999px; white-space:nowrap; }
-#view-workflow_setting .wf-acc-body { padding:4px 14px 12px; border-top:1px solid var(--border-color); display:flex; flex-direction:column; gap:10px; }
-#view-workflow_setting .wf-prov { padding-top:8px; }
-#view-workflow_setting .wf-prov-head { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-main); margin-bottom:6px; }
-#view-workflow_setting .wf-prov-head b { color: var(--accent); }
-#view-workflow_setting .wf-prov-head span { color: var(--text-muted); font-size:12px; }
-#view-workflow_setting .wf-chips { display:flex; flex-wrap:wrap; gap:6px; padding-left:24px; }
-#view-workflow_setting .wf-chip { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--text-main); background:var(--bg-primary); border:1px solid var(--border-color); border-radius:8px; padding:3px 9px; cursor:pointer; }
-#view-workflow_setting .wf-chip:hover { border-color: var(--accent); }
-#view-workflow_setting .wf-chip input { margin:0; }
-#view-workflow_setting .wf-empty { color:var(--text-muted); font-size:12.5px; padding:14px; text-align:center; border:1px dashed var(--border-color); border-radius:10px; }
-#view-workflow_setting .data-item { gap:10px; justify-content:flex-start; }
-`;
-    document.head.appendChild(st);
-}
+    // ======================================================================
+    // TIỆN ÍCH
+    // ======================================================================
+    const wf = () => window.workflowSettings;
+    const $ = (id) => document.getElementById(id);
+    const S = (v) => (v === undefined || v === null) ? '' : String(v).trim();
+    const esc = (s) => String(s === undefined || s === null ? '' : s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+    const enc = encodeURIComponent;
+    const dec = decodeURIComponent;
+    const same = (a, b) => S(a).toLowerCase() === S(b).toLowerCase();
 
-// Tạo thanh công cụ (tìm kiếm + mở/thu hết) phía trên danh sách, chỉ tạo 1 lần
-function wfEnsureToolbar(listId, kind) {
-    const list = document.getElementById(listId);
-    if (!list || document.getElementById(`wf-toolbar-${kind}`)) return;
-    const bar = document.createElement('div');
-    bar.className = 'wf-toolbar';
-    bar.id = `wf-toolbar-${kind}`;
-    bar.innerHTML = `
-        <input type="text" id="wf-search-${kind}" placeholder="Tìm kiếm nhanh...">
-        <button type="button" class="btn-ghost" id="wf-expand-${kind}" style="padding:6px 12px;font-size:12px;">Mở hết</button>
-        <button type="button" class="btn-ghost" id="wf-collapse-${kind}" style="padding:6px 12px;font-size:12px;">Thu hết</button>`;
-    list.parentNode.insertBefore(bar, list);
+    // Chuẩn hoá để so khớp tiêu đề cột / tìm kiếm: bỏ dấu, bỏ khoảng trắng & ký tự đặc biệt
+    function norm(s) {
+        return S(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'd')
+            .toLowerCase().replace(/[^a-z0-9]/g, '');
+    }
 
-    document.getElementById(`wf-search-${kind}`).addEventListener('input', (e) => {
-        if (kind === 'reg') { wfUi.filterReg = wfNorm(e.target.value); renderRegions(); }
-        else { wfUi.filterReq = wfNorm(e.target.value); renderRequestTypes(); }
-    });
-    document.getElementById(`wf-expand-${kind}`).addEventListener('click', () => {
-        if (kind === 'reg') { window.workflowSettings.regions.forEach(r => wfUi.openReg.add(r.region)); renderRegions(); }
-        else { window.workflowSettings.requestTypes.forEach(r => wfUi.openReq.add(r.type)); renderRequestTypes(); }
-    });
-    document.getElementById(`wf-collapse-${kind}`).addEventListener('click', () => {
-        if (kind === 'reg') { wfUi.openReg.clear(); renderRegions(); }
-        else { wfUi.openReq.clear(); renderRequestTypes(); }
-    });
-}
+    // Tách nhiều mục trong 1 ô nhập. Luôn tách theo ";" và xuống dòng; có thể tách thêm theo dấu ","
+    function parseMulti(str, alsoComma) {
+        const re = alsoComma ? /[;,\n]+/ : /[;\n]+/;
+        return S(str).split(re).map(S).filter(Boolean);
+    }
 
-document.addEventListener('DOMContentLoaded', () => {
-    wfInjectStyle();
-    wfEnsureToolbar('ws-req-type-list', 'req');
-    wfEnsureToolbar('ws-region-list', 'reg');
+    function injectStyles() {
+        if ($('wf-style')) return;
+        const st = document.createElement('style');
+        st.id = 'wf-style';
+        st.textContent = `
+            #view-workflow_setting .wf-head { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+            #view-workflow_setting .wf-head h3 { font-size:15px; display:flex; align-items:center; gap:8px; }
+            #view-workflow_setting .wf-head-actions { display:flex; gap:8px; }
+            #view-workflow_setting .wf-mini { display:inline-flex; align-items:center; gap:4px; padding:5px 10px; font-size:12px; cursor:pointer; }
+            #view-workflow_setting .wf-toolbar { display:flex; gap:10px; align-items:center; margin-bottom:10px; }
+            #view-workflow_setting .wf-toolbar .form-input { margin-top:0; flex:1; }
+            #view-workflow_setting .wf-scroll { max-height:460px; overflow-y:auto; padding-right:4px; }
+            #view-workflow_setting .wf-empty { text-align:center; color:var(--text-muted); font-size:13px; padding:18px; border:1px dashed var(--border-color); border-radius:10px; list-style:none; }
+            #view-workflow_setting .data-item label { display:flex; align-items:center; gap:10px; cursor:pointer; color:var(--text-main); font-size:13.5px; }
+            #view-workflow_setting .wf-region { background:var(--bg-primary); border:1px solid var(--border-color); border-radius:10px; margin-bottom:8px; }
+            #view-workflow_setting .wf-region > summary { list-style:none; cursor:pointer; display:flex; align-items:center; gap:10px; padding:11px 14px; font-weight:600; font-size:13.5px; color:var(--text-main); }
+            #view-workflow_setting .wf-region > summary::-webkit-details-marker { display:none; }
+            #view-workflow_setting .wf-region > summary::before { content:'\\25B8'; color:var(--text-muted); transition:transform .15s; }
+            #view-workflow_setting .wf-region[open] > summary::before { transform:rotate(90deg); }
+            #view-workflow_setting .wf-count { margin-left:auto; font-weight:500; font-size:11.5px; color:var(--text-muted); white-space:nowrap; }
+            #view-workflow_setting .wf-prov { padding:2px 14px 12px 38px; display:flex; flex-direction:column; gap:10px; }
+            #view-workflow_setting .wf-prov-head { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-main); }
+            #view-workflow_setting .wf-prov-head small { color:var(--text-muted); }
+            #view-workflow_setting .wf-chips { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 0 24px; }
+            #view-workflow_setting .wf-chip { display:inline-flex; align-items:center; gap:6px; background:var(--bg-card); border:1px solid var(--border-color); border-radius:999px; padding:3px 10px; font-size:12px; color:var(--text-muted); cursor:pointer; }
+            #view-workflow_setting .wf-child-count { margin-left:auto; font-size:11.5px; font-weight:500; color:var(--text-muted); }
+        `;
+        document.head.appendChild(st);
+    }
 
-    wfBindIfExists('btn-add-req-type', 'click', addRequestType);
-    wfBindIfExists('btn-add-region', 'click', addRegion);
-    wfBindIfExists('btn-add-resolution', 'click', addResolution);
+    // ======================================================================
+    // DỰNG GIAO DIỆN
+    // ======================================================================
+    function headHtml(key, title, icon) {
+        return `<div class="wf-head">
+            <h3><i class='bx ${icon}'></i> ${esc(title)}</h3>
+            <div class="wf-head-actions">
+                <button type="button" class="btn-ghost wf-mini" data-act="export" data-key="${key}"><i class='bx bx-download'></i> Export</button>
+                <label for="wf-file-${key}" class="btn-ghost wf-mini"><i class='bx bx-upload'></i> Import</label>
+                <input type="file" id="wf-file-${key}" data-act="import" data-key="${key}" accept=".xlsx,.xls" style="display:none;">
+            </div>
+        </div>`;
+    }
 
-    wfBindIfExists('btn-export-req', 'click', exportReqExcel);
-    wfBindIfExists('import-req-excel', 'change', importReqExcel);
+    function delBtnHtml(key) {
+        return `<button type="button" id="wf-del-${key}" class="btn-ghost danger wf-mini" data-act="del" data-key="${key}" style="display:none;"><i class='bx bx-trash'></i> Xóa mục đã chọn</button>`;
+    }
 
-    wfBindIfExists('btn-export-region', 'click', exportRegionExcel);
-    wfBindIfExists('import-region-excel', 'change', importRegionExcel);
+    function searchHtml(key) {
+        return `<div class="wf-toolbar"><input type="text" class="form-input wf-search" data-search="${key}" placeholder="Tìm kiếm...">${delBtnHtml(key)}</div>`;
+    }
 
-    wfBindIfExists('btn-export-res', 'click', exportResExcel);
-    wfBindIfExists('import-res-excel', 'change', importResExcel);
+    function simpleCardHtml(c) {
+        return `<div class="ai-card wf-card">
+            ${headHtml(c.key, c.title, c.icon)}
+            <div class="input-group">
+                <input type="text" id="wf-in-${c.key}" placeholder="${esc(c.ph)}">
+                <button type="button" class="btn-primary" data-act="add" data-key="${c.key}"><i class='bx bx-plus'></i> Thêm</button>
+            </div>
+            ${searchHtml(c.key)}
+            <ul id="wf-list-${c.key}" class="data-list"></ul>
+        </div>`;
+    }
 
-    wfBindIfExists('btn-del-selected-req', 'click', deleteSelectedReq);
-    wfBindIfExists('btn-del-selected-region', 'click', deleteSelectedRegion);
-    wfBindIfExists('btn-del-selected-res', 'click', deleteSelectedRes);
+    function treeCardHtml(c) {
+        return `<div class="ai-card span-2 wf-card">
+            ${headHtml(c.key, c.title, c.icon)}
+            <div class="input-group">
+                <input type="text" id="wf-p-${c.key}" list="wf-dl-${c.key}" placeholder="${esc(c.parentLabel)} — chọn hoặc nhập mới">
+                <datalist id="wf-dl-${c.key}"></datalist>
+                <input type="text" id="wf-c-${c.key}" placeholder="${esc(c.childLabel)} — nhiều mục cách nhau dấu ;">
+                <button type="button" class="btn-primary" data-act="tree-add" data-key="${c.key}"><i class='bx bx-plus'></i> Thêm</button>
+            </div>
+            ${searchHtml(c.key)}
+            <div id="wf-list-${c.key}" class="workflow-tree wf-scroll"></div>
+        </div>`;
+    }
 
-    renderWorkflowSettingsUI();
-});
+    function regionCardHtml() {
+        const k = REGION_KEY;
+        return `<div class="ai-card span-2 wf-card">
+            ${headHtml(k, 'Dữ liệu Vùng miền', 'bx-map-pin')}
+            <div class="input-group" style="margin-bottom:8px;">
+                <input type="text" id="wf-r-region" list="wf-dl-regions" placeholder="Khu Vực">
+                <datalist id="wf-dl-regions"></datalist>
+                <input type="text" id="wf-r-code" placeholder="Mã Tỉnh (VD: HN)">
+                <input type="text" id="wf-r-name" placeholder="Tỉnh/Thành (VD: 01.Hà Nội)">
+            </div>
+            <div class="input-group">
+                <input type="text" id="wf-r-branch" placeholder="Chi Nhánh — nhiều mục cách nhau dấu , hoặc ;">
+                <button type="button" class="btn-primary" data-act="region-add" data-key="${k}"><i class='bx bx-plus'></i> Thêm</button>
+            </div>
+            ${searchHtml(k)}
+            <div id="wf-list-${k}" class="wf-scroll"></div>
+        </div>`;
+    }
 
-window.loadWorkflowSettingsFromDrive = async function () {
-    if (!window.GPORTAL_FOLDERS || !AppState.isLoggedIn) return;
-    try {
-        const settingsData = await window.getJsonFromDrive('workflow_settings.json', window.GPORTAL_FOLDERS.settings);
+    function buildUI() {
+        const sec = $('view-workflow_setting');
+        if (!sec) return;
+        injectStyles();
 
-        if (settingsData) {
-            // Chuyển cấu trúc phẳng cũ (nếu có) sang cấu trúc cha-con
-            let reqTypes = Array.isArray(settingsData.requestTypes) ? settingsData.requestTypes : [];
-            if (reqTypes.length > 0 && typeof reqTypes[0].subType !== 'undefined') {
-                const grouped = {};
-                reqTypes.forEach(rt => {
-                    if (!grouped[rt.type]) grouped[rt.type] = [];
-                    grouped[rt.type].push(rt.subType);
-                });
-                reqTypes = Object.keys(grouped).map(k => ({ type: k, subTypes: grouped[k] }));
-            }
-            window.workflowSettings.requestTypes = reqTypes;
+        const common = [regionCardHtml()];
+        TREE_LISTS.filter(c => c.group === 'common').forEach(c => common.push(treeCardHtml(c)));
+        SIMPLE_LISTS.filter(c => c.group === 'common').forEach(c => common.push(simpleCardHtml(c)));
 
-            let regs = Array.isArray(settingsData.regions) ? settingsData.regions : [];
-            if (regs.length > 0 && typeof regs[0].branch !== 'undefined') {
-                const grouped = {};
-                regs.forEach(r => {
-                    const k = `${r.region}|${r.provinceCode}|${r.provinceName}`;
-                    if (!grouped[k]) grouped[k] = { region: r.region, provinceCode: r.provinceCode, provinceName: r.provinceName, branches: [] };
-                    grouped[k].branches.push(r.branch);
-                });
-                regs = Object.values(grouped);
-            }
-            window.workflowSettings.regions = regs;
+        const complaint = [];
+        SIMPLE_LISTS.filter(c => c.group === 'complaint').forEach(c => complaint.push(simpleCardHtml(c)));
+        TREE_LISTS.filter(c => c.group === 'complaint').forEach(c => complaint.push(treeCardHtml(c)));
 
-            window.workflowSettings.resolutions = Array.isArray(settingsData.resolutions) ? settingsData.resolutions : [];
-        }
+        sec.innerHTML = `
+            <div class="ai-card" style="margin-bottom:18px;">
+                <h3><i class='bx bx-slider'></i> Cấu hình Workflow: Giám Sát &amp; Complaint</h3>
+                <p style="font-size:13px; color:var(--text-muted); margin-top:8px;">Thiết lập các danh mục động cho 2 module trên. Mọi thay đổi được tự động lưu vào Google Drive (workflow_settings.json). Import Excel: dòng 1 là tiêu đề cột, dùng nút Export để lấy file mẫu.</p>
+            </div>
+            <div class="section-label">Dùng chung — Giám Sát &amp; Complaint</div>
+            <div class="settings-grid">${common.join('')}</div>
+            <div class="section-label" style="margin-top:26px;">Complaint</div>
+            <div class="settings-grid">${complaint.join('')}</div>`;
 
+        bindEvents(sec);
         renderWorkflowSettingsUI();
-    } catch (err) {
-        console.error('Lỗi khi tải workflow settings:', err);
-    }
-};
-
-window.saveWorkflowSettingsToDrive = async function () {
-    if (!window.GPORTAL_FOLDERS || typeof AppState === 'undefined' || !AppState.isLoggedIn) return;
-    try {
-        await window.saveJsonToDrive('workflow_settings.json', window.workflowSettings, window.GPORTAL_FOLDERS.settings);
-    } catch (err) {
-        console.error('Lỗi khi lưu workflow settings:', err);
-    }
-};
-
-function renderWorkflowSettingsUI() {
-    renderRequestTypes();
-    renderRegions();
-    renderResolutions();
-}
-window.renderWorkflowSettingsUI = renderWorkflowSettingsUI;
-
-// ==================== CHECKBOX UTILS ====================
-function toggleDelBtn(listId, btnId) {
-    const list = document.getElementById(listId);
-    const btn = document.getElementById(btnId);
-    if (!list || !btn) return;
-    const checked = list.querySelectorAll('.custom-chk:checked').length > 0;
-    btn.style.display = checked ? 'inline-block' : 'none';
-}
-
-// Gắn hành vi chung cho 1 danh sách dạng thu gọn: nhớ trạng thái mở/đóng,
-// chặn click checkbox làm đóng/mở khối, tick cha thì tick luôn con.
-function wfWireList(listId, btnId, openSet, chkClass) {
-    const list = document.getElementById(listId);
-    if (!list) return;
-
-    list.querySelectorAll('details.wf-acc').forEach(d => {
-        d.addEventListener('toggle', () => {
-            const key = d.dataset.key;
-            if (d.open) openSet.add(key); else openSet.delete(key);
-        });
-    });
-
-    list.querySelectorAll('summary, .wf-prov-head, .wf-chip').forEach(el => {
-        el.querySelectorAll('input.custom-chk').forEach(chk => {
-            chk.addEventListener('click', (e) => e.stopPropagation());
-        });
-    });
-    // Nhãn của chip nằm trong summary? Không — nhưng summary chứa nhãn tiêu đề, để click chữ vẫn mở/đóng khối.
-
-    list.querySelectorAll(`.${chkClass}`).forEach(chk => {
-        chk.addEventListener('change', () => {
-            const kind = chk.dataset.kind;
-            if (kind === 'region' || kind === 'parent') {
-                const box = chk.closest('details');
-                if (box) box.querySelectorAll(`.${chkClass}`).forEach(c => { c.checked = chk.checked; });
-            } else if (kind === 'prov') {
-                const prov = chk.closest('.wf-prov');
-                if (prov) prov.querySelectorAll(`.${chkClass}`).forEach(c => { c.checked = chk.checked; });
-            }
-            toggleDelBtn(listId, btnId);
-        });
-    });
-    toggleDelBtn(listId, btnId);
-}
-
-// ==================== REQUEST TYPE (Loại RQL2 > Phân loại) ====================
-function updateReqDatalist() {
-    const dl = document.getElementById('rql2-parent-list');
-    if (!dl) return;
-    dl.innerHTML = '';
-    window.workflowSettings.requestTypes.forEach(rt => {
-        const op = document.createElement('option'); op.value = rt.type; dl.appendChild(op);
-    });
-}
-
-function renderRequestTypes() {
-    const list = document.getElementById('ws-req-type-list');
-    if (!list) return;
-
-    const q = wfUi.filterReq;
-    const items = window.workflowSettings.requestTypes;
-    let html = '';
-    let shown = 0;
-
-    items.forEach((item, pIndex) => {
-        const subs = item.subTypes || [];
-        const parentMatch = !q || wfNorm(item.type).includes(q);
-        const visibleSubs = subs.map((s, c) => ({ s, c })).filter(x => parentMatch || wfNorm(x.s).includes(q));
-        if (q && !parentMatch && visibleSubs.length === 0) return;
-        shown++;
-
-        const isOpen = q ? true : wfUi.openReq.has(item.type);
-        const chips = visibleSubs.map(x => `
-            <label class="wf-chip"><input type="checkbox" class="custom-chk req-chk" data-kind="child" data-p="${pIndex}" data-c="${x.c}">${wfEsc(x.s)}</label>`).join('');
-
-        html += `
-            <details class="wf-acc" data-key="${wfEsc(item.type)}" ${isOpen ? 'open' : ''}>
-                <summary>
-                    <input type="checkbox" class="custom-chk req-chk" data-kind="parent" data-p="${pIndex}" data-c="-1">
-                    <span>${wfEsc(item.type)}</span>
-                    <span class="wf-count">${subs.length} phân loại</span>
-                </summary>
-                <div class="wf-acc-body">
-                    <div class="wf-chips" style="padding-left:0;">${chips || '<span style="color:var(--text-muted);font-size:12px;">Chưa có phân loại con</span>'}</div>
-                </div>
-            </details>`;
-    });
-
-    list.innerHTML = html || `<div class="wf-empty">${items.length ? 'Không tìm thấy kết quả phù hợp.' : 'Chưa có dữ liệu — hãy thêm mới hoặc Import từ Excel.'}</div>`;
-    wfWireList('ws-req-type-list', 'btn-del-selected-req', wfUi.openReq, 'req-chk');
-    updateReqDatalist();
-}
-
-function addRequestType() {
-    const type = document.getElementById('ws-req-type-name').value.trim();
-    const subType = document.getElementById('ws-sub-type-name').value.trim();
-    if (!type) return alert('Vui lòng nhập Loại RQL2 (Mục cha)');
-
-    let parentObj = window.workflowSettings.requestTypes.find(rt => rt.type.toLowerCase() === type.toLowerCase());
-    if (!parentObj) {
-        parentObj = { type: type, subTypes: [] };
-        window.workflowSettings.requestTypes.push(parentObj);
     }
 
-    if (subType) {
-        subType.split(',').map(s => s.trim()).filter(s => s).forEach(s => {
-            if (!parentObj.subTypes.find(x => x.toLowerCase() === s.toLowerCase())) parentObj.subTypes.push(s);
+    // ======================================================================
+    // SỰ KIỆN (gắn 1 lần duy nhất trên section)
+    // ======================================================================
+    function bindEvents(sec) {
+        sec.addEventListener('click', onClick);
+        sec.addEventListener('change', onChange);
+        sec.addEventListener('input', (e) => {
+            const key = e.target && e.target.dataset ? e.target.dataset.search : null;
+            if (key) renderKey(key);
+        });
+        sec.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' || !e.target.matches('.input-group input')) return;
+            const btn = e.target.closest('.card, .wf-card').querySelector('.input-group [data-act$="add"]');
+            if (btn) { e.preventDefault(); btn.click(); }
         });
     }
 
-    wfUi.openReq.add(parentObj.type);
-    document.getElementById('ws-req-type-name').value = '';
-    document.getElementById('ws-sub-type-name').value = '';
-    renderRequestTypes();
-    window.saveWorkflowSettingsToDrive();
-}
-
-function deleteSelectedReq() {
-    if (!confirm('Xóa các mục đã chọn?')) return;
-    const delParents = new Set();
-    const delChildren = new Map(); // p -> Set(c)
-
-    document.querySelectorAll('#ws-req-type-list .req-chk:checked').forEach(chk => {
-        const p = parseInt(chk.dataset.p, 10);
-        const c = parseInt(chk.dataset.c, 10);
-        if (c === -1) delParents.add(p);
-        else {
-            if (!delChildren.has(p)) delChildren.set(p, new Set());
-            delChildren.get(p).add(c);
+    function onClick(e) {
+        const btn = e.target.closest('button[data-act]');
+        if (!btn) return;
+        const key = btn.dataset.key;
+        switch (btn.dataset.act) {
+            case 'add': addSimple(key); break;
+            case 'tree-add': addTree(key); break;
+            case 'region-add': addRegion(); break;
+            case 'del': deleteSelected(key); break;
+            case 'export': exportExcel(key); break;
         }
-    });
-
-    const result = [];
-    window.workflowSettings.requestTypes.forEach((item, p) => {
-        if (delParents.has(p)) return;
-        const cs = delChildren.get(p);
-        if (cs) item.subTypes = item.subTypes.filter((_, c) => !cs.has(c));
-        result.push(item);
-    });
-    window.workflowSettings.requestTypes = result;
-
-    renderRequestTypes();
-    window.saveWorkflowSettingsToDrive();
-}
-
-function exportReqExcel() {
-    const data = [];
-    window.workflowSettings.requestTypes.forEach(rt => {
-        if (rt.subTypes.length === 0) data.push({ 'Loại RQL2': rt.type, 'Phân loại': '' });
-        else rt.subTypes.forEach(st => data.push({ 'Loại RQL2': rt.type, 'Phân loại': st }));
-    });
-    if (data.length === 0) data.push({ 'Loại RQL2': 'Ví dụ: Khiếu nại', 'Phân loại': 'Ví dụ: Chất lượng dịch vụ' });
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "RequestType");
-    XLSX.writeFile(wb, "RQL2_PhanLoai.xlsx");
-}
-
-function wfReadExcelFile(file, onRows, inputEl) {
-    if (typeof XLSX === 'undefined') {
-        alert('Thư viện đọc Excel (XLSX) chưa tải xong, vui lòng tải lại trang và thử lại.');
-        if (inputEl) inputEl.value = '';
-        return;
     }
-    const reader = new FileReader();
-    reader.onload = function (evt) {
-        try {
-            const wb = XLSX.read(new Uint8Array(evt.target.result), { type: 'array' });
-            const ws = wb.Sheets[wb.SheetNames[0]];
-            const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
-            onRows(rows);
-        } catch (err) {
-            console.error('Lỗi đọc file Excel:', err);
-            alert('Không đọc được file Excel: ' + err.message);
-        } finally {
-            if (inputEl) inputEl.value = '';
-        }
-    };
-    reader.onerror = function () {
-        alert('Không đọc được file. Vui lòng thử lại.');
-        if (inputEl) inputEl.value = '';
-    };
-    reader.readAsArrayBuffer(file);
-}
 
-function importReqExcel(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    wfReadExcelFile(file, (rows) => {
-        const TYPE = ['loairql2', 'rql2', 'loai', 'loaiyeucau', 'type', 'requesttype'];
-        const SUB = ['phanloai', 'phanloaicon', 'subtype', 'loaicon'];
-
-        let lastType = '';
-        let addedParents = 0, addedSubs = 0, skipped = 0;
-
-        rows.forEach(row => {
-            let type = wfPick(row, TYPE) || lastType;
-            const sub = wfPick(row, SUB);
-            if (!type) { skipped++; return; }
-            lastType = type;
-
-            let p = window.workflowSettings.requestTypes.find(rt => rt.type.toLowerCase() === type.toLowerCase());
-            if (!p) { p = { type, subTypes: [] }; window.workflowSettings.requestTypes.push(p); addedParents++; }
-            if (sub && !p.subTypes.find(s => s.toLowerCase() === sub.toLowerCase())) { p.subTypes.push(sub); addedSubs++; }
-        });
-
-        if (rows.length && addedParents === 0 && addedSubs === 0 && skipped === rows.length) {
-            alert('Không nhận ra cột nào trong file. Các tiêu đề đọc được: ' + Object.keys(rows[0]).join(' | ') + '\nCần có cột "Loại RQL2" và "Phân loại".');
+    function onChange(e) {
+        const t = e.target;
+        if (t.classList && t.classList.contains('wf-chk')) {
+            toggleDelBtn(t.dataset.key);
             return;
         }
-        renderRequestTypes();
-        window.saveWorkflowSettingsToDrive();
-        alert(`Import xong: thêm ${addedParents} loại RQL2 mới, ${addedSubs} phân loại mới${skipped ? `, bỏ qua ${skipped} dòng thiếu dữ liệu` : ''}.`);
-    }, e.target);
-}
-
-// ==================== REGIONS (Khu vực > Tỉnh/Thành > Chi nhánh) ====================
-function updateRegionDatalist() {
-    const dl = document.getElementById('region-parent-list');
-    if (!dl) return;
-    dl.innerHTML = '';
-    [...new Set(window.workflowSettings.regions.map(r => r.region))].forEach(r => {
-        const op = document.createElement('option'); op.value = r; dl.appendChild(op);
-    });
-}
-
-function renderRegions() {
-    const list = document.getElementById('ws-region-list');
-    if (!list) return;
-
-    const q = wfUi.filterReg;
-
-    // Gom theo Khu vực (giữ thứ tự xuất hiện đầu tiên)
-    const groups = new Map();
-    window.workflowSettings.regions.forEach((item, idx) => {
-        if (!groups.has(item.region)) groups.set(item.region, []);
-        groups.get(item.region).push({ item, idx });
-    });
-
-    let html = '';
-    groups.forEach((entries, regionName) => {
-        const regionMatch = !q || wfNorm(regionName).includes(q);
-
-        // Lọc theo từ khoá: tỉnh khớp (mã/tên) hoặc chi nhánh khớp
-        const shownProvs = entries.map(({ item, idx }) => {
-            const provMatch = regionMatch || wfNorm(item.provinceCode).includes(q) || wfNorm(item.provinceName).includes(q);
-            const branches = (item.branches || []).map((b, c) => ({ b, c }))
-                .filter(x => provMatch || wfNorm(x.b).includes(q));
-            return { item, idx, provMatch, branches };
-        }).filter(x => !q || x.provMatch || x.branches.length > 0);
-
-        if (q && shownProvs.length === 0) return;
-
-        const totalBranches = entries.reduce((s, e) => s + (e.item.branches || []).length, 0);
-        const isOpen = q ? true : wfUi.openReg.has(regionName);
-
-        const provHtml = shownProvs.map(({ item, idx, branches }) => `
-            <div class="wf-prov">
-                <div class="wf-prov-head">
-                    <input type="checkbox" class="custom-chk reg-chk" data-kind="prov" data-p="${idx}" data-c="-1">
-                    <b>${wfEsc(item.provinceCode)}</b><span>${wfEsc(item.provinceName)} · ${(item.branches || []).length} chi nhánh</span>
-                </div>
-                <div class="wf-chips">
-                    ${branches.map(x => `<label class="wf-chip"><input type="checkbox" class="custom-chk reg-chk" data-kind="branch" data-p="${idx}" data-c="${x.c}">${wfEsc(x.b)}</label>`).join('') || '<span style="color:var(--text-muted);font-size:12px;">Chưa có chi nhánh</span>'}
-                </div>
-            </div>`).join('');
-
-        html += `
-            <details class="wf-acc" data-key="${wfEsc(regionName)}" ${isOpen ? 'open' : ''}>
-                <summary>
-                    <input type="checkbox" class="custom-chk reg-chk" data-kind="region" data-region="${wfEsc(regionName)}">
-                    <span>${wfEsc(regionName)}</span>
-                    <span class="wf-count">${entries.length} tỉnh · ${totalBranches} chi nhánh</span>
-                </summary>
-                <div class="wf-acc-body">${provHtml}</div>
-            </details>`;
-    });
-
-    list.innerHTML = html || `<div class="wf-empty">${window.workflowSettings.regions.length ? 'Không tìm thấy kết quả phù hợp.' : 'Chưa có dữ liệu — hãy thêm mới hoặc Import từ Excel.'}</div>`;
-    wfWireList('ws-region-list', 'btn-del-selected-region', wfUi.openReg, 'reg-chk');
-    updateRegionDatalist();
-}
-
-function addRegion() {
-    const region = document.getElementById('ws-region-name').value.trim();
-    const pCode = document.getElementById('ws-province-code').value.trim();
-    const pName = document.getElementById('ws-province-name').value.trim();
-    const branchInput = document.getElementById('ws-branch-name').value.trim();
-
-    if (!region || !pCode || !pName) return alert('Vui lòng nhập Khu vực, Mã Tỉnh, Tỉnh/Thành');
-
-    let pObj = window.workflowSettings.regions.find(r => r.provinceCode.toLowerCase() === pCode.toLowerCase());
-    if (!pObj) {
-        pObj = { region, provinceCode: pCode, provinceName: pName, branches: [] };
-        window.workflowSettings.regions.push(pObj);
+        if (t.type === 'file' && t.dataset.act === 'import') importExcel(t.dataset.key, t);
     }
 
-    if (branchInput) {
-        branchInput.split(',').map(s => s.trim()).filter(s => s).forEach(b => {
-            if (!pObj.branches.find(x => x.toLowerCase() === b.toLowerCase())) pObj.branches.push(b);
-        });
+    function toggleDelBtn(key) {
+        const list = $('wf-list-' + key);
+        const btn = $('wf-del-' + key);
+        if (!list || !btn) return;
+        btn.style.display = list.querySelector('.wf-chk:checked') ? 'inline-flex' : 'none';
     }
 
-    wfUi.openReg.add(pObj.region);
-    ['ws-region-name', 'ws-province-code', 'ws-province-name', 'ws-branch-name'].forEach(id => { document.getElementById(id).value = ''; });
-    renderRegions();
-    window.saveWorkflowSettingsToDrive();
-}
+    // ======================================================================
+    // LƯU / TẢI DRIVE
+    // ======================================================================
+    function commit(key) {
+        renderKey(key);
+        if (typeof window.saveWorkflowSettingsToDrive === 'function') window.saveWorkflowSettingsToDrive();
+    }
 
-function deleteSelectedRegion() {
-    if (!confirm('Xóa các mục đã chọn?')) return;
-    const delRegions = new Set();
-    const delProvs = new Set();
-    const delBranches = new Map(); // idx -> Set(c)
+    window.loadWorkflowSettingsFromDrive = async function () {
+        if (!window.GPORTAL_FOLDERS || typeof AppState === 'undefined' || !AppState.isLoggedIn) return;
+        try {
+            const data = await window.getJsonFromDrive('workflow_settings.json', window.GPORTAL_FOLDERS.settings);
+            const next = defaultWF();
 
-    document.querySelectorAll('#ws-region-list .reg-chk:checked').forEach(chk => {
-        const kind = chk.dataset.kind;
-        if (kind === 'region') { delRegions.add(chk.dataset.region); return; }
-        const p = parseInt(chk.dataset.p, 10);
-        if (kind === 'prov') { delProvs.add(p); return; }
-        if (kind === 'branch') {
-            if (!delBranches.has(p)) delBranches.set(p, new Set());
-            delBranches.get(p).add(parseInt(chk.dataset.c, 10));
-        }
-    });
+            if (data) {
+                // --- requestTypes (migrate định dạng phẳng cũ nếu có) ---
+                let rt = Array.isArray(data.requestTypes) ? data.requestTypes : [];
+                if (rt.length && typeof rt[0].subType !== 'undefined') {
+                    const g = {};
+                    rt.forEach(x => { (g[x.type] = g[x.type] || []).push(x.subType); });
+                    rt = Object.keys(g).map(k => ({ type: k, subTypes: g[k] }));
+                }
+                next.requestTypes = rt.map(x => ({ type: S(x.type), subTypes: (x.subTypes || []).map(S).filter(Boolean) })).filter(x => x.type);
 
-    const result = [];
-    window.workflowSettings.regions.forEach((item, idx) => {
-        if (delRegions.has(item.region) || delProvs.has(idx)) return;
-        const cs = delBranches.get(idx);
-        if (cs) item.branches = item.branches.filter((_, c) => !cs.has(c));
-        result.push(item);
-    });
-    window.workflowSettings.regions = result;
+                // --- srTypes ---
+                next.srTypes = (Array.isArray(data.srTypes) ? data.srTypes : [])
+                    .map(x => ({ type: S(x.type), subTypes: (x.subTypes || []).map(S).filter(Boolean) })).filter(x => x.type);
 
-    renderRegions();
-    window.saveWorkflowSettingsToDrive();
-}
+                // --- regions (migrate định dạng phẳng cũ nếu có) ---
+                let rg = Array.isArray(data.regions) ? data.regions : [];
+                if (rg.length && typeof rg[0].branch !== 'undefined') {
+                    const g = {};
+                    rg.forEach(r => {
+                        const k = `${r.region}|${r.provinceCode}|${r.provinceName}`;
+                        if (!g[k]) g[k] = { region: r.region, provinceCode: r.provinceCode, provinceName: r.provinceName, branches: [] };
+                        if (r.branch) g[k].branches.push(r.branch);
+                    });
+                    rg = Object.values(g);
+                }
+                next.regions = rg.map(r => ({
+                    region: S(r.region), provinceCode: S(r.provinceCode), provinceName: S(r.provinceName),
+                    branches: (r.branches || []).map(S).filter(Boolean)
+                })).filter(r => r.region && r.provinceCode);
 
-function exportRegionExcel() {
-    const data = [];
-    window.workflowSettings.regions.forEach(r => {
-        if (r.branches.length === 0) data.push({ 'Khu Vực': r.region, 'Mã Tỉnh/Thành': r.provinceCode, 'Tỉnh / Thành': r.provinceName, 'Chi Nhánh': '' });
-        else r.branches.forEach(b => data.push({ 'Khu Vực': r.region, 'Mã Tỉnh/Thành': r.provinceCode, 'Tỉnh / Thành': r.provinceName, 'Chi Nhánh': b }));
-    });
-    if (data.length === 0) data.push({ 'Khu Vực': '01.Thập Đại Đô Thị', 'Mã Tỉnh/Thành': 'HN', 'Tỉnh / Thành': '01.Hà Nội', 'Chi Nhánh': 'HNI_01' });
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Regions");
-    XLSX.writeFile(wb, "DuLieuVungMien.xlsx");
-}
-
-function importRegionExcel(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    wfReadExcelFile(file, (rows) => {
-        const REGION = ['khuvuc', 'vungmien', 'vung', 'region'];
-        const PCODE = ['matinh', 'matinhthanh', 'matp', 'mat', 'provincecode', 'code'];
-        const PNAME = ['tinhthanh', 'tinh', 'tentinh', 'tentinhthanh', 'tinhthanhpho', 'provincename', 'province'];
-        const BRANCH = ['chinhanh', 'tenchinhanh', 'branch', 'cn'];
-
-        let lastRegion = '', lastCode = '', lastName = '';
-        let addedProvs = 0, addedBranches = 0, skipped = 0;
-
-        rows.forEach(row => {
-            const region = wfPick(row, REGION) || lastRegion;
-            const pCode = wfPick(row, PCODE) || lastCode;
-            const pName = wfPick(row, PNAME) || lastName;
-            const branchRaw = wfPick(row, BRANCH);
-
-            if (!region || !pCode || !pName) { skipped++; return; }
-            lastRegion = region; lastCode = pCode; lastName = pName;
-
-            let pObj = window.workflowSettings.regions.find(r => r.provinceCode.toLowerCase() === pCode.toLowerCase());
-            if (!pObj) {
-                pObj = { region, provinceCode: pCode, provinceName: pName, branches: [] };
-                window.workflowSettings.regions.push(pObj);
-                addedProvs++;
-            }
-            if (branchRaw) {
-                branchRaw.split(',').map(s => s.trim()).filter(Boolean).forEach(b => {
-                    if (!pObj.branches.find(x => x.toLowerCase() === b.toLowerCase())) { pObj.branches.push(b); addedBranches++; }
+                // --- các danh sách đơn giản ---
+                SIMPLE_LISTS.forEach(c => {
+                    next[c.key] = (Array.isArray(data[c.key]) ? data[c.key] : [])
+                        .map(x => ({ name: S(x && x.name !== undefined ? x.name : x) })).filter(x => x.name);
                 });
             }
+
+            Object.assign(window.workflowSettings, next);
+            renderWorkflowSettingsUI();
+        } catch (err) {
+            console.error('Lỗi khi tải workflow settings:', err);
+        }
+    };
+
+    window.saveWorkflowSettingsToDrive = async function () {
+        if (!window.GPORTAL_FOLDERS || typeof AppState === 'undefined' || !AppState.isLoggedIn) return;
+        try {
+            await window.saveJsonToDrive('workflow_settings.json', window.workflowSettings, window.GPORTAL_FOLDERS.settings);
+        } catch (err) {
+            console.error('Lỗi khi lưu workflow settings:', err);
+        }
+    };
+
+    // ======================================================================
+    // RENDER
+    // ======================================================================
+    function renderKey(key) {
+        const cfg = REG[key];
+        if (!cfg) return;
+        if (cfg.kind === 'simple') renderSimple(key);
+        else if (cfg.kind === 'tree') renderTree(key);
+        else renderRegions();
+    }
+
+    function renderWorkflowSettingsUI() {
+        Object.keys(REG).forEach(renderKey);
+    }
+    window.renderWorkflowSettingsUI = renderWorkflowSettingsUI;
+
+    function searchValue(key) {
+        const el = document.querySelector(`[data-search="${key}"]`);
+        return el ? norm(el.value) : '';
+    }
+
+    // ---- Danh sách đơn giản ----
+    function renderSimple(key) {
+        const list = $('wf-list-' + key);
+        if (!list) return;
+        const q = searchValue(key);
+        const items = (wf()[key] || []).filter(x => !q || norm(x.name).includes(q));
+        list.innerHTML = items.length
+            ? items.map(x => `<li class="data-item"><label><input type="checkbox" class="custom-chk wf-chk" data-key="${key}" data-kind="item" data-name="${enc(x.name)}"><span>${esc(x.name)}</span></label></li>`).join('')
+            : `<li class="wf-empty">${q ? 'Không tìm thấy.' : 'Chưa có dữ liệu.'}</li>`;
+        toggleDelBtn(key);
+    }
+
+    function addSimple(key) {
+        const input = $('wf-in-' + key);
+        if (!input) return;
+        const names = parseMulti(input.value, false);
+        if (!names.length) return alert('Vui lòng nhập giá trị.');
+        const arr = wf()[key];
+        names.forEach(n => { if (!arr.find(x => same(x.name, n))) arr.push({ name: n }); });
+        input.value = '';
+        commit(key);
+    }
+
+    // ---- Danh sách phụ thuộc 2 cấp (RQL2, Loại YC SR) ----
+    function renderTree(key) {
+        const list = $('wf-list-' + key);
+        if (!list) return;
+        const q = searchValue(key);
+        const data = wf()[key] || [];
+
+        const dl = $('wf-dl-' + key);
+        if (dl) dl.innerHTML = data.map(x => `<option value="${esc(x.type)}"></option>`).join('');
+
+        let html = '';
+        data.forEach(item => {
+            const parentHit = q && norm(item.type).includes(q);
+            const kids = item.subTypes.filter(s => !q || parentHit || norm(s).includes(q));
+            if (q && !parentHit && !kids.length) return;
+            html += `<div class="wf-parent-node">
+                <div class="wf-parent-header">
+                    <input type="checkbox" class="custom-chk wf-chk" data-key="${key}" data-kind="parent" data-p="${enc(item.type)}">
+                    <span>${esc(item.type)}</span><span class="wf-child-count">${item.subTypes.length} mục</span>
+                </div>
+                <div class="wf-child-list">${kids.map(s => `
+                    <div class="wf-child-item">
+                        <input type="checkbox" class="custom-chk wf-chk" data-key="${key}" data-kind="child" data-p="${enc(item.type)}" data-c="${enc(s)}">
+                        <span>${esc(s)}</span>
+                    </div>`).join('')}</div>
+            </div>`;
         });
-
-        if (rows.length === 0) {
-            alert('File Excel không có dòng dữ liệu nào (kiểm tra lại sheet đầu tiên).');
-            return;
-        }
-        if (addedProvs === 0 && addedBranches === 0 && skipped === rows.length) {
-            alert('Không nhận ra cột nào trong file. Các tiêu đề đọc được: ' + Object.keys(rows[0]).join(' | ') + '\nCần có các cột: Khu Vực, Mã Tỉnh/Thành, Tỉnh / Thành, Chi Nhánh.');
-            return;
-        }
-
-        renderRegions();
-        window.saveWorkflowSettingsToDrive();
-        alert(`Import xong: thêm ${addedProvs} tỉnh/thành mới, ${addedBranches} chi nhánh mới${skipped ? `, bỏ qua ${skipped} dòng thiếu Khu vực/Mã tỉnh/Tên tỉnh` : ''}.`);
-    }, e.target);
-}
-
-// ==================== RESOLUTION ====================
-function renderResolutions() {
-    const list = document.getElementById('ws-resolution-list');
-    if (!list) return;
-    list.innerHTML = '';
-    if (!window.workflowSettings.resolutions.length) {
-        list.innerHTML = '<li class="wf-empty">Chưa có phương án — hãy thêm mới hoặc Import từ Excel.</li>';
+        list.innerHTML = html || `<div class="wf-empty">${q ? 'Không tìm thấy.' : 'Chưa có dữ liệu.'}</div>`;
+        toggleDelBtn(key);
     }
-    window.workflowSettings.resolutions.forEach((item, index) => {
-        const li = document.createElement('li');
-        li.className = 'data-item';
-        li.innerHTML = `
-            <input type="checkbox" class="custom-chk res-chk" data-idx="${index}">
-            <span style="flex:1;"><strong>${wfEsc(item.name)}</strong></span>`;
-        list.appendChild(li);
-    });
-    list.querySelectorAll('.res-chk').forEach(chk => {
-        chk.addEventListener('change', () => toggleDelBtn('ws-resolution-list', 'btn-del-selected-res'));
-    });
-    toggleDelBtn('ws-resolution-list', 'btn-del-selected-res');
-}
 
-function addResolution() {
-    const name = document.getElementById('ws-resolution-name').value.trim();
-    if (!name) return alert('Vui lòng nhập tên Phương án');
-    if (!window.workflowSettings.resolutions.find(r => r.name.toLowerCase() === name.toLowerCase())) {
-        window.workflowSettings.resolutions.push({ name });
+    function addTree(key) {
+        const cfg = REG[key];
+        const p = S($('wf-p-' + key).value);
+        const c = $('wf-c-' + key).value;
+        if (!p) return alert('Vui lòng nhập ' + cfg.parentLabel + '.');
+        mergePairs(key, parseMulti(c, false).map(x => [p, x]), p);
+        $('wf-p-' + key).value = '';
+        $('wf-c-' + key).value = '';
+        commit(key);
     }
-    document.getElementById('ws-resolution-name').value = '';
-    renderResolutions();
-    window.saveWorkflowSettingsToDrive();
-}
 
-function deleteSelectedRes() {
-    if (!confirm('Xóa các phương án đã chọn?')) return;
-    const del = new Set(Array.from(document.querySelectorAll('#ws-resolution-list .res-chk:checked')).map(c => parseInt(c.dataset.idx, 10)));
-    window.workflowSettings.resolutions = window.workflowSettings.resolutions.filter((_, i) => !del.has(i));
-    renderResolutions();
-    window.saveWorkflowSettingsToDrive();
-}
+    // pairs: [[cấp1, cấp2], ...]; ensureParent: tạo mục cấp 1 kể cả khi chưa có cấp 2
+    function mergePairs(key, pairs, ensureParent) {
+        const arr = wf()[key];
+        const getParent = (name) => {
+            let o = arr.find(x => same(x.type, name));
+            if (!o) { o = { type: name, subTypes: [] }; arr.push(o); }
+            return o;
+        };
+        if (ensureParent) getParent(ensureParent);
+        pairs.forEach(([p, c]) => {
+            if (!S(p)) return;
+            const o = getParent(S(p));
+            if (S(c) && !o.subTypes.find(s => same(s, c))) o.subTypes.push(S(c));
+        });
+    }
 
-function exportResExcel() {
-    const data = window.workflowSettings.resolutions.map(item => ({ 'Phương án': item.name }));
-    if (data.length === 0) data.push({ 'Phương án': 'Ví dụ: Hướng dẫn khách hàng' });
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Resolutions");
-    XLSX.writeFile(wb, "PhuongAn.xlsx");
-}
+    // ---- Vùng miền ----
+    function renderRegions() {
+        const box = $('wf-list-' + REGION_KEY);
+        if (!box) return;
+        const q = searchValue(REGION_KEY);
+        const regs = wf().regions || [];
 
-function importResExcel(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    wfReadExcelFile(file, (rows) => {
-        const NAME = ['phuongan', 'tenphuongan', 'resolution', 'ten'];
-        let added = 0;
-        rows.forEach(row => {
-            const name = wfPick(row, NAME);
-            if (name && !window.workflowSettings.resolutions.find(r => r.name.toLowerCase() === name.toLowerCase())) {
-                window.workflowSettings.resolutions.push({ name });
-                added++;
+        const dl = $('wf-dl-regions');
+        if (dl) dl.innerHTML = [...new Set(regs.map(r => r.region))].map(r => `<option value="${esc(r)}"></option>`).join('');
+
+        const groups = new Map();
+        regs.forEach(p => {
+            if (q) {
+                const hay = norm(p.region + p.provinceCode + p.provinceName + p.branches.join(''));
+                if (!hay.includes(q)) return;
             }
+            if (!groups.has(p.region)) groups.set(p.region, []);
+            groups.get(p.region).push(p);
         });
-        if (rows.length && added === 0 && !rows.some(r => wfPick(r, NAME))) {
-            alert('Không nhận ra cột nào trong file. Các tiêu đề đọc được: ' + Object.keys(rows[0]).join(' | ') + '\nCần có cột "Phương án".');
-            return;
+
+        let html = '';
+        groups.forEach((provs, region) => {
+            const branchTotal = provs.reduce((n, p) => n + p.branches.length, 0);
+            html += `<details class="wf-region" ${q ? 'open' : ''}>
+                <summary>
+                    <input type="checkbox" class="custom-chk wf-chk" data-key="${REGION_KEY}" data-kind="region" data-region="${enc(region)}">
+                    <span>${esc(region)}</span>
+                    <span class="wf-count">${provs.length} tỉnh · ${branchTotal} chi nhánh</span>
+                </summary>
+                <div class="wf-prov">${provs.map(p => `
+                    <div>
+                        <div class="wf-prov-head">
+                            <input type="checkbox" class="custom-chk wf-chk" data-key="${REGION_KEY}" data-kind="prov" data-code="${enc(p.provinceCode)}">
+                            <b>${esc(p.provinceCode)}</b> <span>– ${esc(p.provinceName)}</span> <small>(${p.branches.length} chi nhánh)</small>
+                        </div>
+                        ${p.branches.length ? `<div class="wf-chips">${p.branches.map(b => `
+                            <label class="wf-chip"><input type="checkbox" class="custom-chk wf-chk" data-key="${REGION_KEY}" data-kind="branch" data-code="${enc(p.provinceCode)}" data-branch="${enc(b)}">${esc(b)}</label>`).join('')}</div>` : ''}
+                    </div>`).join('')}
+                </div>
+            </details>`;
+        });
+        box.innerHTML = html || `<div class="wf-empty">${q ? 'Không tìm thấy.' : 'Chưa có dữ liệu.'}</div>`;
+        toggleDelBtn(REGION_KEY);
+    }
+
+    function upsertProvince(region, code, name, branches) {
+        const arr = wf().regions;
+        let p = arr.find(r => same(r.provinceCode, code));
+        if (!p) {
+            p = { region, provinceCode: code, provinceName: name, branches: [] };
+            arr.push(p);
         }
-        renderResolutions();
-        window.saveWorkflowSettingsToDrive();
-        alert(`Import xong: thêm ${added} phương án mới.`);
-    }, e.target);
-}
+        (branches || []).forEach(b => { if (S(b) && !p.branches.find(x => same(x, b))) p.branches.push(S(b)); });
+    }
+
+    function addRegion() {
+        const region = S($('wf-r-region').value);
+        const code = S($('wf-r-code').value).toUpperCase();
+        const name = S($('wf-r-name').value);
+        if (!region || !code || !name) return alert('Vui lòng nhập Khu vực, Mã Tỉnh, Tỉnh/Thành.');
+        upsertProvince(region, code, name, parseMulti($('wf-r-branch').value, true));
+        ['wf-r-region', 'wf-r-code', 'wf-r-name', 'wf-r-branch'].forEach(id => { $(id).value = ''; });
+        commit(REGION_KEY);
+    }
+
+    // ======================================================================
+    // XOÁ CÁC MỤC ĐÃ CHỌN
+    // ======================================================================
+    function deleteSelected(key) {
+        const list = $('wf-list-' + key);
+        if (!list) return;
+        const checked = Array.from(list.querySelectorAll('.wf-chk:checked'));
+        if (!checked.length) return;
+        if (!confirm(`Xóa ${checked.length} mục đã chọn?`)) return;
+
+        const cfg = REG[key];
+        const d = wf();
+
+        if (cfg.kind === 'simple') {
+            const names = new Set(checked.map(c => dec(c.dataset.name).toLowerCase()));
+            d[key] = d[key].filter(x => !names.has(x.name.toLowerCase()));
+        } else if (cfg.kind === 'tree') {
+            const parents = new Set();
+            const kids = [];
+            checked.forEach(c => {
+                const p = dec(c.dataset.p);
+                if (c.dataset.kind === 'parent') parents.add(p);
+                else kids.push([p, dec(c.dataset.c)]);
+            });
+            d[key] = d[key].filter(x => !parents.has(x.type));
+            kids.forEach(([p, c]) => {
+                const o = d[key].find(x => x.type === p);
+                if (o) o.subTypes = o.subTypes.filter(s => s !== c);
+            });
+        } else {
+            const regionsDel = new Set();
+            const provDel = new Set();
+            const branchDel = [];
+            checked.forEach(c => {
+                if (c.dataset.kind === 'region') regionsDel.add(dec(c.dataset.region));
+                else if (c.dataset.kind === 'prov') provDel.add(dec(c.dataset.code));
+                else branchDel.push([dec(c.dataset.code), dec(c.dataset.branch)]);
+            });
+            d.regions = d.regions.filter(p => !regionsDel.has(p.region) && !provDel.has(p.provinceCode));
+            branchDel.forEach(([code, b]) => {
+                const p = d.regions.find(r => r.provinceCode === code);
+                if (p) p.branches = p.branches.filter(x => x !== b);
+            });
+        }
+        commit(key);
+    }
+
+    // ======================================================================
+    // EXPORT / IMPORT EXCEL
+    // ======================================================================
+    function downloadAoa(aoa, sheetName, fileName) {
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+        XLSX.writeFile(wb, fileName + '.xlsx');
+    }
+
+    function exportExcel(key) {
+        const cfg = REG[key];
+        const d = wf();
+        if (cfg.kind === 'simple') {
+            downloadAoa([[cfg.header]].concat(d[key].map(x => [x.name])), 'Data', cfg.file);
+        } else if (cfg.kind === 'tree') {
+            const rows = [cfg.headers];
+            d[key].forEach(x => {
+                if (!x.subTypes.length) rows.push([x.type, '']);
+                else x.subTypes.forEach(s => rows.push([x.type, s]));
+            });
+            downloadAoa(rows, 'Data', cfg.file);
+        } else {
+            const rows = [REGION_HEADERS];
+            d.regions.forEach(r => {
+                if (!r.branches.length) rows.push([r.region, r.provinceCode, r.provinceName, '']);
+                else r.branches.forEach(b => rows.push([r.region, r.provinceCode, r.provinceName, b]));
+            });
+            downloadAoa(rows, 'Data', cfg.file);
+        }
+    }
+
+    function importExcel(key, input) {
+        const file = input.files && input.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function (evt) {
+            try {
+                const wb = XLSX.read(new Uint8Array(evt.target.result), { type: 'array' });
+                const aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '', raw: false });
+                const cfg = REG[key];
+                let count = 0;
+                if (cfg.kind === 'simple') count = importSimple(key, aoa);
+                else if (cfg.kind === 'tree') count = importTree(key, aoa);
+                else count = importRegion(aoa);
+                commit(key);
+                alert(`✓ Đã import ${count} dòng dữ liệu.`);
+            } catch (err) {
+                console.error('Lỗi import Excel:', err);
+                alert('Lỗi file Excel: ' + err.message);
+            } finally {
+                input.value = '';
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    const nonEmptyRows = (aoa) => aoa.filter(r => Array.isArray(r) && r.some(c => S(c)));
+
+    function importSimple(key, aoa) {
+        const rows = nonEmptyRows(aoa).slice(1); // bỏ dòng tiêu đề
+        const arr = wf()[key];
+        let n = 0;
+        rows.forEach(r => {
+            const name = S(r[0]);
+            if (name && !arr.find(x => same(x.name, name))) { arr.push({ name }); n++; }
+        });
+        return n;
+    }
+
+    function importTree(key, aoa) {
+        const cfg = REG[key];
+        const rows = nonEmptyRows(aoa);
+        if (rows.length < 2) return 0;
+        const head = rows[0].map(S);
+        const pairs = [];
+
+        const isPairFormat = norm(head[0]) === norm(cfg.headers[0]) && norm(head[1]) === norm(cfg.headers[1]);
+        if (isPairFormat) {
+            // Kiểu 2 cột: [Cấp 1 | Cấp 2], tự điền xuống ô gộp bị trống
+            let lastParent = '';
+            rows.slice(1).forEach(r => {
+                const p = S(r[0]) || lastParent;
+                lastParent = p;
+                pairs.push([p, S(r[1])]);
+            });
+        } else {
+            // Kiểu ma trận: mỗi cột là 1 mục cấp 1 (dòng tiêu đề), bên dưới là các mục cấp 2
+            head.forEach((parent, col) => {
+                if (!parent) return;
+                pairs.push([parent, '']);
+                rows.slice(1).forEach(r => { if (S(r[col])) pairs.push([parent, S(r[col])]); });
+            });
+        }
+        mergePairs(key, pairs);
+        return pairs.length;
+    }
+
+    function importRegion(aoa) {
+        const rows = nonEmptyRows(aoa);
+        if (rows.length < 2) return 0;
+        const head = rows[0].map(norm);
+        const iReg = head.findIndex(h => h.includes('khuvuc'));
+        const iCode = head.findIndex(h => h.includes('tinh') && h.startsWith('ma'));
+        const iName = head.findIndex((h, i) => i !== iCode && h.includes('tinh') && !h.startsWith('ma'));
+        const iBr = head.findIndex(h => h.includes('chinhanh'));
+        if (iReg < 0 || iCode < 0 || iName < 0) {
+            throw new Error('Không nhận diện được cột. File cần có các cột: Khu Vực, Mã Tỉnh/Thành, Tỉnh / Thành, Chi Nhánh (dòng 1).');
+        }
+
+        let lastReg = '', lastCode = '', lastName = '';
+        let n = 0;
+        rows.slice(1).forEach(r => {
+            let reg = S(r[iReg]), code = S(r[iCode]).toUpperCase(), name = S(r[iName]);
+            // Ô gộp (merge) trong Excel: các dòng sau bị trống -> lấy lại giá trị dòng trước
+            if (!reg) reg = lastReg;
+            if (!code && !name) { code = lastCode; name = lastName; }
+            lastReg = reg; lastCode = code; lastName = name;
+            if (!reg || !code || !name) return;
+            upsertProvince(reg, code, name, iBr >= 0 ? parseMulti(r[iBr], false) : []);
+            n++;
+        });
+        return n;
+    }
+
+    // ======================================================================
+    // KHỞI TẠO
+    // ======================================================================
+    document.addEventListener('DOMContentLoaded', buildUI);
+})();
