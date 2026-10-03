@@ -250,6 +250,81 @@
 #complaint-modal .cm-badge[class*="st-"] { background:var(--st-bg); color:var(--cm-text); border:1px solid var(--st-line); }
 
 /* ============================================================
+   BẢNG DỮ LIỆU CHUYÊN NGHIỆP + TIÊU ĐỀ CỐ ĐỊNH (Giám Sát & Complaint)
+   - Khung lưới nhẹ cho từng ô, tiêu đề đậm gọn.
+   - Vùng bảng có chiều cao tối đa theo màn hình và tự cuộn; hàng tiêu đề
+     (thead) dính trên cùng nên kéo xuống nhiều dữ liệu vẫn thấy tiêu đề.
+   - Dùng border-collapse:separate để viền tiêu đề không bị "trôi" khi cuộn.
+   ============================================================ */
+:root {
+    --grid-line:rgba(15,23,42,.10);
+    --grid-line-strong:rgba(15,23,42,.22);
+    --th-bg:#eaeff7;
+    --th-text:#1e293b;
+}
+:root[data-theme="dark"] {
+    --grid-line:rgba(255,255,255,.08);
+    --grid-line-strong:rgba(255,255,255,.18);
+    --th-bg:#1c2947;
+    --th-text:#dbe4f7;
+}
+
+/* Thanh công cụ phía trên bảng */
+#view-monitoring .toolbar.ai-card, #view-complaint .toolbar.ai-card {
+    padding:12px 16px; border-radius:14px; margin-bottom:0; box-shadow:var(--shadow-soft);
+}
+#view-monitoring .toolbar .form-select, #view-monitoring .toolbar .form-input,
+#view-complaint .toolbar .form-input {
+    height:38px; margin-top:0; border-radius:10px; font-size:13px;
+}
+#view-monitoring .toolbar .btn-primary, #view-monitoring .toolbar .btn-ghost,
+#view-complaint .toolbar .btn-primary, #view-complaint .toolbar .btn-ghost {
+    height:38px; border-radius:10px; font-size:13px;
+}
+/* Nhãn "N bản ghi": dạng viên thuốc, luôn đọc được ở cả 2 giao diện */
+#mon-count-badge, #complaint-count-badge {
+    display:inline-flex; align-items:center; height:30px; padding:0 12px; border-radius:999px;
+    background:var(--accent-glow); color:var(--accent); border:1px solid var(--border-color);
+    font-size:12px !important; font-weight:700; text-shadow:none; white-space:nowrap;
+}
+
+/* Khung bảng: bo góc, viền rõ, vùng cuộn có chiều cao theo màn hình */
+#view-monitoring .ai-card > div[style*="overflow-x"],
+#view-complaint .ai-card > div[style*="max-height"] {
+    max-height:calc(100vh - 250px) !important; min-height:240px;
+    overflow:auto !important; scrollbar-width:thin;
+}
+#view-monitoring .ai-card:has(#mon-table), #view-complaint .ai-card:has(.complaint-table) {
+    border-radius:14px; overflow:hidden; border:1px solid var(--grid-line-strong);
+}
+
+/* Bảng + khung lưới */
+#mon-table, #view-complaint .complaint-table { border-collapse:separate; border-spacing:0; width:100%; }
+
+#mon-table thead th, #view-complaint .complaint-table thead th {
+    position:sticky; top:0; z-index:3;
+    background:var(--th-bg); color:var(--th-text);
+    font-size:11.5px; font-weight:700; letter-spacing:.01em; text-transform:none;
+    line-height:1.3; padding:11px 9px; white-space:normal; vertical-align:middle; text-align:left;
+    border-right:1px solid var(--grid-line); border-bottom:1px solid var(--grid-line-strong);
+    box-shadow:0 5px 8px -7px rgba(0,0,0,.35);
+}
+#mon-table thead th:first-child, #view-complaint .complaint-table thead th:first-child { text-align:center; }
+#mon-table thead th:last-child, #view-complaint .complaint-table thead th:last-child { border-right:0; }
+
+#mon-table tbody td, #view-complaint .complaint-table tbody td {
+    padding:9px 9px; vertical-align:middle; font-size:13px;
+    border-right:1px solid var(--grid-line); border-bottom:1px solid var(--grid-line);
+}
+#mon-table tbody td:last-child, #view-complaint .complaint-table tbody td:last-child { border-right:0; }
+#mon-table tbody td:first-child, #view-complaint .complaint-table tbody td:first-child { text-align:center; color:var(--text-muted); font-weight:600; }
+#mon-table tbody tr:last-child td, #view-complaint .complaint-table tbody tr:last-child td { border-bottom:0; }
+#mon-table tbody tr, #view-complaint .complaint-table tbody tr { transition:background-color .12s ease; }
+
+/* Dòng thông báo (đang tải / không có dữ liệu): bỏ lưới cho gọn */
+#mon-table tbody td[colspan], #view-complaint .complaint-table tbody td[colspan] { border-right:0; }
+
+/* ============================================================
    POPUP "SỬA REQUEST" TRANG GIÁM SÁT — rộng, nhiều cột (chỉ CSS,
    không đổi HTML / dữ liệu). 2 cột lớn x 2 cột con = 4 cột trên màn rộng.
    ============================================================ */
