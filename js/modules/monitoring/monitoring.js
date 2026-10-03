@@ -2,7 +2,18 @@
  * monitoring.js - Module Giám Sát Request Layer 2
  *
  * ============================================================================
- * BẢN VÁ MỚI NHẤT — "Nhập xong hiển thị OK, F5 lại thì báo chưa đăng nhập rồi
+ * BẢN CẬP NHẬT NHỎ (giao diện): tô màu cả dòng bảng theo Trạng thái, dùng chung
+ * bảng màu với trang Complaint (class st-* trong css/complaint.css). Toàn bộ
+ * logic / dữ liệu / bộ lọc / Google Sheets bên dưới giữ NGUYÊN.
+ *   In Progress          -> vàng nhạt (giống "In Process")
+ *   Fully Resolved       -> xanh lá nhạt (giống "Đã xử lý")
+ *   Closed without Action-> xám nhạt   (giống "Đã xử lý, KH thanh lý")
+ * Giao diện popup "Sửa Request" được làm rộng / nhiều cột hoàn toàn bằng CSS
+ * (css/complaint.css, khối #mon-modal) — không đổi HTML hay cấu trúc dữ liệu.
+ * ============================================================================
+ *
+ * ============================================================================
+ * BẢN VÁ TRƯỚC ĐÓ — "Nhập xong hiển thị OK, F5 lại thì báo chưa đăng nhập rồi
  * ~3 giây sau báo 'Không có dữ liệu phù hợp'"
  * ============================================================================
  * Có 3 nguyên nhân độc lập, đã xử lý cả 3:
@@ -174,11 +185,30 @@ function srUrl(sr) {
     return SR_BASE + encodeURIComponent((sr || '').trim());
 }
 
+// ---- Màu dòng theo Trạng thái (dùng chung bảng màu st-* với trang Complaint) ----
+function monStatusClass(status) {
+    if (status === 'Fully Resolved') return 'st-done';
+    if (status === 'Closed without Action') return 'st-terminated';
+    return 'st-inprocess'; // In Progress và mọi giá trị khác
+}
+
+// CSS màu/popup nằm trong css/complaint.css — tự nạp nếu index.html chưa link
+function ensureMonStylesheet() {
+    const has = Array.from(document.querySelectorAll('link[rel="stylesheet"]')).some(l => /complaint\.css/.test(l.getAttribute('href') || ''));
+    if (has) return;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'css/complaint.css';
+    document.head.appendChild(link);
+}
+
 // ======================================================================
 // INIT
 // ======================================================================
 document.addEventListener('DOMContentLoaded', () => {
     const on = (id, ev, fn) => { const e = el(id); if (e) e.addEventListener(ev, fn); };
+
+    ensureMonStylesheet();
 
     on('btn-mon-add', 'click', openAddModal);
     on('btn-mon-refresh', 'click', refreshMonitoring);
@@ -583,7 +613,7 @@ function renderTable() {
     tbody.innerHTML = note + monState.filtered.map((r, idx) => {
         const details = r.requestDetails || '';
         return `
-        <tr class="mon-row" data-id="${esc(r.id)}" style="cursor:pointer;">
+        <tr class="mon-row ${monStatusClass(r.status)}" data-id="${esc(r.id)}" style="cursor:pointer;">
             <td>${idx + 1}</td>
             <td title="${esc(r.region)}">${esc(r.region) || '–'}</td>
             <td title="${esc(r.province)}">${esc(r.province) || '–'}</td>

@@ -3,7 +3,38 @@
    Light mode là mục tiêu chính (độ tương phản >= WCAG AA).
    Modal #complaint-modal nằm NGOÀI #view-complaint nên mọi rule đều
    được scope riêng cho cả hai vùng.
+
+   File này cũng chứa (ở cuối file):
+   - Bảng màu Trạng thái dùng chung (st-*) cho dòng bảng Complaint + Giám Sát
+   - Giao diện popup "Sửa Request" của trang Giám Sát (#mon-modal)
    ============================================================ */
+
+/* ---------- Bảng màu Trạng thái (pastel RẤT nhạt, ít bão hòa — dịu mắt) — dùng chung 2 trang ---------- */
+:root {
+    --st-inprocess-bg:#fbf8e9;    --st-inprocess-hv:#f6f1d6;    --st-inprocess-line:#ddd29a;
+    --st-coordinating-bg:#fbf2e8; --st-coordinating-hv:#f6e6d5; --st-coordinating-line:#e3c29b;
+    --st-waiting-bg:#ecf3fb;      --st-waiting-hv:#dfeaf7;      --st-waiting-line:#a9c3e3;
+    --st-noresponse-bg:#f2effa;   --st-noresponse-hv:#e8e3f5;   --st-noresponse-line:#c2b5e0;
+    --st-done-bg:#ebf6ef;         --st-done-hv:#ddeee4;         --st-done-line:#a3d0b4;
+    --st-terminated-bg:#f0f0f2;   --st-terminated-hv:#e5e6e9;   --st-terminated-line:#c0c3ca;
+    --st-pill-bg:rgba(255,255,255,.75);
+}
+:root[data-theme="dark"] {
+    --st-inprocess-bg:rgba(214,192,96,.07);    --st-inprocess-hv:rgba(214,192,96,.13);    --st-inprocess-line:rgba(214,192,96,.35);
+    --st-coordinating-bg:rgba(222,164,114,.08); --st-coordinating-hv:rgba(222,164,114,.14); --st-coordinating-line:rgba(222,164,114,.35);
+    --st-waiting-bg:rgba(112,160,220,.08);      --st-waiting-hv:rgba(112,160,220,.15);      --st-waiting-line:rgba(112,160,220,.35);
+    --st-noresponse-bg:rgba(160,142,210,.09);   --st-noresponse-hv:rgba(160,142,210,.16);   --st-noresponse-line:rgba(160,142,210,.35);
+    --st-done-bg:rgba(112,190,142,.07);         --st-done-hv:rgba(112,190,142,.13);         --st-done-line:rgba(112,190,142,.35);
+    --st-terminated-bg:rgba(150,160,176,.08);   --st-terminated-hv:rgba(150,160,176,.14);   --st-terminated-line:rgba(150,160,176,.35);
+    --st-pill-bg:rgba(255,255,255,.06);
+}
+.st-inprocess    { --st-bg:var(--st-inprocess-bg);    --st-hv:var(--st-inprocess-hv);    --st-line:var(--st-inprocess-line); }
+.st-coordinating { --st-bg:var(--st-coordinating-bg); --st-hv:var(--st-coordinating-hv); --st-line:var(--st-coordinating-line); }
+.st-waiting      { --st-bg:var(--st-waiting-bg);      --st-hv:var(--st-waiting-hv);      --st-line:var(--st-waiting-line); }
+.st-noresponse   { --st-bg:var(--st-noresponse-bg);   --st-hv:var(--st-noresponse-hv);   --st-line:var(--st-noresponse-line); }
+.st-done         { --st-bg:var(--st-done-bg);         --st-hv:var(--st-done-hv);         --st-line:var(--st-done-line); }
+.st-terminated   { --st-bg:var(--st-terminated-bg);   --st-hv:var(--st-terminated-hv);   --st-line:var(--st-terminated-line); }
+
 #view-complaint, #complaint-modal {
     --cm-bg:#f1f5f9; --cm-surface:#ffffff; --cm-surface-2:#f8fafc;
     --cm-border:#cbd5e1; --cm-border-strong:#94a3b8;
@@ -44,6 +75,8 @@
 #complaint-modal .cm-input[hidden] { display:none; }
 #complaint-modal textarea.cm-input { resize:vertical; line-height:1.5; }
 #complaint-modal select.cm-input { cursor:pointer; }
+/* Ô Trạng thái chỉ đọc (tự động theo KQ) */
+#complaint-modal .cm-input[readonly] { background:var(--cm-disabled-bg); color:var(--cm-text); font-weight:700; cursor:default; }
 
 /* ---------- Khung modal ---------- */
 #complaint-modal.modal-overlay { padding:14px; align-items:center; }
@@ -191,4 +224,65 @@
     #view-complaint .complaint-filter-grid { grid-template-columns:1fr; }
     #view-complaint .complaint-columns-panel { flex-direction:column; }
     #view-complaint .complaint-column-options { grid-template-columns:repeat(2,minmax(0,1fr)); width:100%; }
+}
+
+/* ============================================================
+   MÀU DÒNG THEO TRẠNG THÁI (Complaint + Giám Sát)
+   Đặt SAU các rule zebra/hover ở trên để ghi đè. Màu pastel nhạt,
+   chữ giữ nguyên màu mặc định của giao diện nên luôn dễ đọc.
+   ============================================================ */
+#view-complaint .complaint-table tbody tr[class*="st-"],
+#mon-table tbody tr.mon-row[class*="st-"] { background:var(--st-bg); }
+#view-complaint .complaint-table tbody tr[class*="st-"]:hover,
+#mon-table tbody tr.mon-row[class*="st-"]:hover { background:var(--st-hv); }
+#mon-table tbody tr.mon-row td { color:var(--text-main); }
+/* Nhãn trạng thái trong bảng Giám Sát: bỏ nền đặc chói (cam/xanh/xám + chữ trắng) -> nền trung tính + viền nhạt */
+#mon-table tbody tr.mon-row td > span[style*="border-radius:20px"] {
+    background:var(--st-pill-bg) !important; color:var(--text-main) !important;
+    border:1px solid var(--st-line); font-weight:600;
+}
+
+/* Nhãn trạng thái trong bảng Complaint: nền trung tính trên nền dòng pastel */
+#view-complaint .complaint-table tbody tr[class*="st-"] .complaint-table-status {
+    background:var(--st-pill-bg); color:var(--cm-text); border:1px solid var(--st-line);
+}
+/* Badge trạng thái trên đầu popup Complaint */
+#complaint-modal .cm-badge[class*="st-"] { background:var(--st-bg); color:var(--cm-text); border:1px solid var(--st-line); }
+
+/* ============================================================
+   POPUP "SỬA REQUEST" TRANG GIÁM SÁT — rộng, nhiều cột (chỉ CSS,
+   không đổi HTML / dữ liệu). 2 cột lớn x 2 cột con = 4 cột trên màn rộng.
+   ============================================================ */
+#mon-modal.modal-overlay { padding:14px; }
+#mon-modal .modal-content { max-width:1120px !important; width:96vw !important; max-height:calc(100vh - 28px); display:flex; flex-direction:column; padding:18px 22px; }
+#mon-modal .modal-header { flex-shrink:0; }
+#mon-modal .modal-body { flex:1; min-height:0; overflow-y:auto; padding-right:4px; }
+#mon-modal .modal-footer { flex-shrink:0; }
+
+/* Nội dung YC: rộng, dễ nhập */
+#mon-modal #mon-details { min-height:120px; line-height:1.5; }
+
+/* Nhãn + ô nhập dễ đọc */
+#mon-modal .input-group-col { gap:5px; min-width:0; }
+#mon-modal .input-group-col > label { font-size:12px; font-weight:600; color:var(--text-main); }
+#mon-modal .input-group-col > label small { font-weight:500; color:var(--text-muted); }
+#mon-modal .form-input, #mon-modal .form-select { min-height:38px; margin-top:0; font-size:13.5px; border-color:var(--text-muted); }
+#mon-modal .form-input[readonly] { opacity:.85; font-weight:600; }
+
+/* Hai cột lớn, mỗi cột chia tiếp 2 cột con */
+#mon-modal .settings-grid { grid-template-columns:1fr 1fr; gap:18px 26px; align-items:start; }
+#mon-modal .settings-grid > div { display:grid; grid-template-columns:1fr 1fr; gap:12px 14px; align-content:start; }
+#mon-modal .settings-grid > div::before {
+    grid-column:1 / -1; padding-bottom:6px; border-bottom:1px solid var(--border-color);
+    font-size:11.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--accent);
+}
+#mon-modal .settings-grid > div:first-child::before { content:'Thông tin hợp đồng'; }
+#mon-modal .settings-grid > div:last-child::before { content:'Phân loại & xử lý'; }
+
+@media (max-width:900px) {
+    #mon-modal .settings-grid { grid-template-columns:1fr; }
+}
+@media (max-width:560px) {
+    #mon-modal .modal-content { padding:14px; }
+    #mon-modal .settings-grid > div { grid-template-columns:1fr; }
 }

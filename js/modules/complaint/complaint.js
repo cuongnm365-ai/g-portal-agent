@@ -2,32 +2,21 @@
  * complaint.js - Module Complaint Management
  *
  * ============================================================================
- * BẢN VIẾT LẠI GIAO DIỆN NHẬP LIỆU (UI/UX) + SỬA LIÊN KẾT KV -> CN
+ * BẢN CẬP NHẬT: TRẠNG THÁI TỰ ĐỘNG THEO KQ + MÀU DÒNG THEO TRẠNG THÁI
  * ============================================================================
- * NGUYÊN NHÂN GỐC RỄ ĐÃ XỬ LÝ
- *  1) Modal #complaint-modal nằm NGOÀI <section id="view-complaint"> nhưng toàn
- *     bộ CSS bố cục lại scope "#view-complaint ..." => không áp dụng được cho
- *     modal (form xếp dọc, mất nền, nhãn nổi trên nền trang). Các class
- *     .modal-card / .step-head / .step-index cũng không tồn tại ngoài #view-email.
- *     => CSS nay nằm trong css/complaint.css, scope riêng cho CẢ HAI vùng.
- *  2) KV -> CN: dữ liệu Vùng miền lưu THEO TỪNG TỈNH (nhiều tỉnh cùng 1 "region").
- *     Hàm cũ dùng regions.find(...) nên chỉ lấy chi nhánh của TỈNH ĐẦU TIÊN.
- *     => gộp chi nhánh của TẤT CẢ tỉnh thuộc khu vực (branchChoices()).
- *  3) Light mode: viền/nền ô nhập quá nhạt => bảng màu có độ tương phản AA.
+ * - "Trạng thái" KHÔNG còn chọn tay: luôn được suy ra từ ô KQ (deriveStatus).
+ *   Đổi KQ -> Trạng thái đổi ngay; xóa KQ -> về "In Process". Nội dung KQ gốc
+ *   không bao giờ bị sửa.
+ * - Mỗi lần tải / hiển thị bảng, Trạng thái của MỌI bản ghi (kể cả bản ghi cũ)
+ *   được tính lại từ KQ nên F5 luôn đúng. Không xóa/đổi dữ liệu nào khác.
+ * - Cả dòng trong bảng được tô màu pastel theo Trạng thái (CSS: css/complaint.css,
+ *   class st-*).
+ * - Muốn đổi cách nhận diện KQ -> sửa bảng STATUS_RULES bên dưới (từ khóa viết
+ *   KHÔNG DẤU, chữ thường).
  *
- * KIẾN TRÚC MỚI
- *  - Modal tự dựng bằng JS (buildComplaintModal) thay cho markup cũ trong
- *    index.html; JS cũng tự nạp css/complaint.css nếu index.html chưa link.
- *  - Bố cục 2 ngăn song song: [Thông tin khiếu nại] | [Thông tin xử lý], chia
- *    nhóm (Khách hàng & dịch vụ / Mốc thời gian / Phân công / Phân loại & kết
- *    quả / Ghi chú). Màn hình hẹp (<1100px) chuyển thành 2 tab.
- *  - Bỏ luồng 2 bước; có "Lưu & thêm mới" để nhập liên tục; Ctrl+Enter = Lưu.
- *  - Ô văn bản dài tự giãn tới mức tối đa rồi cuộn trong ô.
- *  - Chi nhánh: combobox tìm kiếm; chưa chọn KV thì liệt kê mọi chi nhánh và
- *    chọn chi nhánh sẽ tự điền KV.
- *
- * GIỮ NGUYÊN: cấu trúc dữ liệu bản ghi, lưu local/Drive, đồng bộ Google Sheets,
- * parse email, nhận diện hợp đồng/SĐT/SR, bảng, bộ lọc, ẩn/hiện cột.
+ * Giữ nguyên toàn bộ phần còn lại: cấu trúc dữ liệu bản ghi, lưu local/Drive,
+ * đồng bộ Google Sheets, parse email, nhận diện hợp đồng/SĐT/SR, bộ lọc, ẩn/hiện
+ * cột, combobox KV -> CN.
  * ============================================================================
  */
 (function () {
@@ -59,12 +48,75 @@
     const CXD = 'CXD';
     const CSS_HREF = 'css/complaint.css';
 
+    // ======================================================================
+    // TRẠNG THÁI TỰ ĐỘNG THEO KQ
+    // ======================================================================
+    const DEFAULT_STATUS = 'In Process';
+    // Thứ tự hiển thị trong bộ lọc
+    const STATUS_LIST = [
+        'In Process', 'Đang phối hợp PB', 'Chờ KH phản hồi',
+        'KH không phản hồi', 'Đã xử lý', 'Đã xử lý, KH thanh lý'
+    ];
+    // Trạng thái -> hậu tố class màu (st-xxx trong CSS)
+    const STATUS_KEY = {
+        'In Process': 'inprocess',
+        'Đang phối hợp PB': 'coordinating',
+        'Chờ KH phản hồi': 'waiting',
+        'KH không phản hồi': 'noresponse',
+        'Đã xử lý': 'done',
+        'Đã xử lý, KH thanh lý': 'terminated'
+    };
+    // Từ khóa nhận diện KQ (đã bỏ dấu, chữ thường). Sửa tại đây khi danh mục KQ thay đổi.
+    const STATUS_RULES = {
+        notDone: /chua\s*(xu\s*ly|hoan|giai\s*quyet)|khong\s*xu\s*ly/,
+        done: /da\s*xu\s*ly|xu\s*ly\s*xong|hoan\s*(tat|thanh)|da\s*giai\s*quyet|completed|resolved|\bclosed\b/,
+        terminated: /thanh\s*ly/,
+        noReply: /khong\s*(phan\s*hoi|nghe\s*may|lien\s*lac|tra\s*loi|bat\s*may)|\ban\s*link\b|\blink\s*an\b|\bkh\s*an\b/,
+        waiting: /(cho|doi)\s*(kh|khach\s*hang|khach)?\s*phan\s*hoi|inbox|\bib\b/,
+        coordinating: /phoi\s*hop|chuyen\s*(pb|bo\s*phan|phong)|dang\s*xu\s*ly|\bcho\s*(pb|bo\s*phan)|dieu\s*phoi/
+    };
+
+    function foldText(value) {
+        return String(value === undefined || value === null ? '' : value)
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/đ/g, 'd').replace(/Đ/g, 'd')
+            .toLowerCase().replace(/\s+/g, ' ').trim();
+    }
+
+    /**
+     * KQ -> Trạng thái. Ưu tiên: Đã xử lý, KH thanh lý -> Đã xử lý -> Chờ KH phản hồi
+     * -> KH không phản hồi -> Đang phối hợp PB -> In Process.
+     * Riêng KQ có cụm phủ định rõ ràng ("không phản hồi", "không nghe máy"...) thì
+     * không bị xếp vào "Chờ KH phản hồi" dù có chữ IB/Inbox.
+     */
+    function deriveStatus(kq) {
+        const text = foldText(kq);
+        if (!text) return DEFAULT_STATUS;
+        const R = STATUS_RULES;
+        const done = R.done.test(text) && !R.notDone.test(text);
+        if (done && R.terminated.test(text)) return 'Đã xử lý, KH thanh lý';
+        if (done) return 'Đã xử lý';
+        const noReply = R.noReply.test(text);
+        if (!noReply && R.waiting.test(text)) return 'Chờ KH phản hồi';
+        if (noReply) return 'KH không phản hồi';
+        if (R.coordinating.test(text)) return 'Đang phối hợp PB';
+        return DEFAULT_STATUS;
+    }
+    window.deriveComplaintStatus = deriveStatus;
+
+    function statusKeyOf(status) { return STATUS_KEY[status] || STATUS_KEY[DEFAULT_STATUS]; }
+
     const complaintState = {
         records: [],
         editingId: null,
         lastParsed: null,
         detected: null
     };
+
+    // Tính lại Trạng thái của mọi bản ghi từ KQ (không đụng tới KQ hay trường khác)
+    function syncStatuses() {
+        complaintState.records.forEach((record) => { record.status = deriveStatus(record.result); });
+    }
 
     // ======================================================================
     // TIỆN ÍCH
@@ -260,7 +312,7 @@
         <div class="cm-dialog" role="dialog" aria-modal="true" aria-labelledby="complaint-modal-heading" data-pane="info">
             <header class="cm-head">
                 <div class="cm-title"><h3 id="complaint-modal-heading">Complaint Management</h3><p id="complaint-modal-title">Thêm khiếu nại mới</p></div>
-                <span id="complaint-status-badge" class="cm-badge">In Process</span>
+                <span id="complaint-status-badge" class="cm-badge st-inprocess">In Process</span>
                 <button type="button" id="btn-close-complaint-modal" class="cm-icon-btn" aria-label="Đóng"><i class='bx bx-x'></i></button>
             </header>
             <nav class="cm-tabs" role="tablist" aria-label="Chuyển ngăn">
@@ -333,9 +385,9 @@
                             ${fld(3, 'complaint-request-type-2', 'Loại YC SR (cấp 2)', sel('complaint-request-type-2'))}
                             ${fld(3, 'complaint-service-type', 'Dịch vụ KH khiếu nại', sel('complaint-service-type'))}
                             ${fld(3, 'complaint-sr-code', 'Mã SR', inp('complaint-sr-code'))}
-                            ${fld(3, 'complaint-status', 'Trạng thái', `<select id="complaint-status" class="cm-input"><option>In Process</option><option>Completed</option><option>Resolved</option><option>Closed</option></select>`)}
                             ${fld(3, 'complaint-voucher-search', 'Voucher', `${inp('complaint-voucher-search', 'search', 'Tìm hoặc nhập', 'list="complaint-voucher-options" autocomplete="off"')}<datalist id="complaint-voucher-options"></datalist><select id="complaint-voucher" class="cm-input" hidden aria-hidden="true" tabindex="-1"></select>`)}
                             ${fld(3, 'complaint-result', 'Kết quả', sel('complaint-result'))}
+                            ${fld(3, 'complaint-status', 'Trạng thái <span class="cm-hint">tự động theo KQ</span>', `<input id="complaint-status" type="text" class="cm-input" value="${DEFAULT_STATUS}" readonly tabindex="-1" aria-readonly="true">`)}
                         </div>
                     </div>
                     <div class="cm-card">
@@ -364,9 +416,22 @@
             modal.style.display = 'none';
             document.body.appendChild(modal);
         }
-        if (modal.dataset.cmBuilt === '2') return;
+        if (modal.dataset.cmBuilt === '3') return;
         modal.innerHTML = modalMarkup(); // thay thế hoàn toàn markup cũ (không trùng ID)
-        modal.dataset.cmBuilt = '2';
+        modal.dataset.cmBuilt = '3';
+    }
+
+    // Cập nhật ô Trạng thái + badge theo KQ đang chọn (ô Trạng thái chỉ đọc)
+    function refreshComplaintStatusField() {
+        const status = deriveStatus($('complaint-result') ? $('complaint-result').value : '');
+        const field = $('complaint-status');
+        if (field) field.value = status;
+        const badge = $('complaint-status-badge');
+        if (badge) {
+            badge.textContent = status;
+            badge.className = 'cm-badge st-' + statusKeyOf(status);
+        }
+        return status;
     }
 
     function setPane(pane) {
@@ -418,6 +483,7 @@
         fillSelect($('complaint-result'), getSimpleOptions('results', ['Đã xử lý', 'Đang xử lý', 'Chưa xử lý', 'Khác']), '');
         fillSelect($('complaint-cn'), getCNOptionsByKV(''), '');
         fillSelect($('complaint-request-type-2'), [], '');
+        refreshComplaintStatusField();
     }
 
     // ---------- Combobox chi nhánh ----------
@@ -588,11 +654,8 @@
         if (branchOrigin) branchOrigin.textContent = '';
         if (ftelOrigin) ftelOrigin.textContent = '';
 
-        const status = F('complaint-status');
-        const wantedStatus = values.status || 'In Process';
-        if (!Array.from(status.options).some((o) => o.value === wantedStatus)) status.add(new Option(wantedStatus, wantedStatus));
-        status.value = wantedStatus;
-        F('complaint-status-badge').textContent = wantedStatus;
+        // Trạng thái luôn suy ra từ KQ (ô chỉ đọc)
+        refreshComplaintStatusField();
 
         F('complaint-phone').value = values.phone || values.contractNo || '';
         F('complaint-customer').value = values.customer || values.customerInfo || '';
@@ -853,7 +916,7 @@
         return {
             id: complaintState.editingId || ('complaint_' + Date.now() + '_' + Math.random().toString(16).slice(2, 8)),
             source: info.source,
-            status: v('complaint-status') || 'In Process',
+            status: deriveStatus(info.result), // luôn suy ra từ KQ, không lấy từ ô nhập
             kv: info.kv,
             cn: info.cn,
             phone: phoneValue,
@@ -897,10 +960,12 @@
 
     function storeComplaintRecord(record) {
         const rows = complaintState.records;
+        record.status = deriveStatus(record.result);
         const index = rows.findIndex((item) => item.id === record.id);
         if (index >= 0) rows[index] = record;
         else rows.unshift(record);
         rows.forEach((item, idx) => { item.stt = idx + 1; });
+        syncStatuses();
         saveComplaintState();
         renderComplaintTable();
         return record;
@@ -922,12 +987,15 @@
     async function loadComplaintState() {
         const state = safeLocalGet(TABLE_KEY);
         complaintState.records = state && Array.isArray(state.records) ? state.records : [];
+        syncStatuses();
+        renderComplaintTable();
 
         if (window.GPORTAL_FOLDERS && window.AppState && window.AppState.isLoggedIn && typeof window.getJsonFromDrive === 'function') {
             try {
                 const remote = await window.getJsonFromDrive('complaints.json', window.GPORTAL_FOLDERS.settings);
                 if (remote && Array.isArray(remote.records)) {
                     complaintState.records = remote.records;
+                    syncStatuses();
                     safeLocalSet(TABLE_KEY, { records: complaintState.records });
                 }
             } catch (err) {
@@ -1146,8 +1214,7 @@
         setDetectionSummary([]);
         complaintState.lastParsed = null;
         complaintState.detected = null;
-        $('complaint-status').value = 'In Process';
-        $('complaint-status-badge').textContent = 'In Process';
+        refreshComplaintStatusField(); // KQ đã xóa -> In Process
         fillSelect($('complaint-request-type-2'), [], '');
         updateRelatedDropdowns();
         updatePostLinkDisplay();
@@ -1219,7 +1286,7 @@
     }
 
     // ======================================================================
-    // BẢNG DANH SÁCH: BỘ LỌC / CỘT / RENDER (giữ nguyên)
+    // BẢNG DANH SÁCH: BỘ LỌC / CỘT / RENDER
     // ======================================================================
     const FILTER_FIELDS = {
         source: 'complaint-filter-source', kv: 'complaint-filter-kv', cn: 'complaint-filter-cn',
@@ -1234,7 +1301,9 @@
             const select = $(id);
             if (!select) return;
             const selected = select.value;
-            const options = unique(complaintState.records.map((record) => record[field]).filter(Boolean)).sort((a, b) => String(a).localeCompare(String(b), 'vi'));
+            let options = unique(complaintState.records.map((record) => record[field]).filter(Boolean)).sort((a, b) => String(a).localeCompare(String(b), 'vi'));
+            // Bộ lọc Trạng thái: luôn theo thứ tự cố định, chỉ hiện trạng thái đang có dữ liệu
+            if (field === 'status') options = STATUS_LIST.filter((status) => options.includes(status));
             select.innerHTML = '<option value="">Tất cả</option>' + options.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join('');
             select.value = options.includes(selected) ? selected : '';
         });
@@ -1278,6 +1347,7 @@
     }
 
     function applyComplaintSearch() {
+        syncStatuses(); // đảm bảo Trạng thái luôn khớp KQ trước khi lọc / hiển thị
         const query = normalizeText($('complaint-search')?.value || '').toLowerCase();
         const rows = complaintState.records.filter((item) => {
             const categoryMatches = Object.entries(FILTER_FIELDS).every(([field, id]) => {
@@ -1310,11 +1380,13 @@
             tbody.innerHTML = '<tr><td colspan="26" style="text-align:center; padding:42px; color:var(--text-muted);">Không tìm thấy Complaint phù hợp.</td></tr>';
             return;
         }
-        tbody.innerHTML = rows.map((item) => `
-            <tr data-id="${escapeHtml(item.id)}" style="cursor:pointer;">
+        tbody.innerHTML = rows.map((item) => {
+            const statusKey = statusKeyOf(item.status);
+            return `
+            <tr data-id="${escapeHtml(item.id)}" class="st-row st-${statusKey}" style="cursor:pointer;">
                 <td>${escapeHtml(item.stt || '')}</td>
                 <td>${escapeHtml(item.source || '—')}</td>
-                <td><span class="complaint-table-status">${escapeHtml(item.status || 'In Process')}</span></td>
+                <td><span class="complaint-table-status">${escapeHtml(item.status || DEFAULT_STATUS)}</span></td>
                 <td>${escapeHtml(item.kv || '—')}</td>
                 <td>${escapeHtml(item.cn || '—')}</td>
                 <td>${escapeHtml(item.phone || item.contractNo || '—')}</td>
@@ -1338,8 +1410,8 @@
                 <td>${escapeHtml(item.voucher || '—')}</td>
                 <td>${escapeHtml(item.result || '—')}</td>
                 <td>${item.srCode ? `<a href="http://sr.fpt.net/sr/ServiceRequest/detail?code=${encodeURIComponent(item.srCode)}" target="_blank" rel="noopener" class="mon-link" title="Service Request ${escapeHtml(item.srCode)}">${escapeHtml(item.srCode)}</a>` : '—'}</td>
-            </tr>
-        `).join('');
+            </tr>`;
+        }).join('');
 
         tbody.querySelectorAll('tr[data-id]').forEach((row) => {
             row.addEventListener('click', (event) => {
@@ -1354,12 +1426,14 @@
     }
 
     function renderComplaintTable() {
+        syncStatuses();
         const tbody = $('complaint-tbody');
         const badge = $('complaint-count-badge');
         if (badge) badge.textContent = `${complaintState.records.length} bản ghi`;
         if (!tbody) return;
         if (!complaintState.records.length) {
             tbody.innerHTML = '<tr><td colspan="26" style="text-align:center; padding:42px; color:var(--text-muted);">Chưa có dữ liệu Complaint — bấm <strong>+ Thêm khiếu nại</strong> để bắt đầu.</td></tr>';
+            refreshComplaintFilterOptions();
             return;
         }
         applyComplaintSearch();
@@ -1369,8 +1443,8 @@
     // SỰ KIỆN
     // ======================================================================
     function bindComplaintEvents() {
-        if (document.body.dataset.complaintEventsBound === '2') return;
-        document.body.dataset.complaintEventsBound = '2';
+        if (document.body.dataset.complaintEventsBound === '3') return;
+        document.body.dataset.complaintEventsBound = '3';
 
         $('btn-complaint-add')?.addEventListener('click', () => { clearComplaintForm(); showComplaintModal('new', null); });
         $('btn-complaint-refresh')?.addEventListener('click', () => loadComplaintState());
@@ -1486,9 +1560,9 @@
             fillSelect($('complaint-request-type-2'), getSRType2Options($('complaint-request-type-1').value), '');
         });
         $('complaint-note')?.addEventListener('input', (event) => updateProcessingDetection(event.target.value, true));
-        $('complaint-status')?.addEventListener('change', (event) => {
-            $('complaint-status-badge').textContent = event.target.value || 'In Process';
-        });
+        // Đổi KQ -> Trạng thái cập nhật ngay
+        $('complaint-result')?.addEventListener('change', refreshComplaintStatusField);
+        $('complaint-result')?.addEventListener('input', refreshComplaintStatusField);
 
         // Có dữ liệu thì tự điền 3 Account mặc định
         const dataEntryIds = ['complaint-source', 'complaint-kv', 'complaint-cn-search', 'complaint-phone', 'complaint-ftel-search', 'complaint-customer', 'complaint-customer-profile', 'complaint-post-url', 'complaint-content', 'complaint-level', 'complaint-customer-time', 'complaint-alert-time', 'complaint-first-reply', 'complaint-complete-time', 'complaint-request-type-1', 'complaint-request-type-2', 'complaint-service-type', 'complaint-sr-code', 'complaint-handling-unit', 'complaint-voucher-search', 'complaint-result', 'complaint-note'];
